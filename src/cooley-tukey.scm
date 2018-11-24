@@ -73,8 +73,8 @@
 (define (vector-range n)
   (list->vector (range n)))
 
-(display (vector-range 16)) (newline)
-(display (fft (vector-range 16))) (newline)
+;(display (vector-range 16)) (newline)
+;(display (fft (vector-range 16))) (newline)
 
 (define (call-graph->dot g)
   (let ((dot-nodes (map (cut format "a{} [label=\"{:s}\"]" <> <>)
@@ -89,4 +89,6 @@
             (string-join dot-nodes "\n  ")
             (string-join dot-edges "\n  "))))
 
-(display (call-graph->dot (expression->call-graph (fft (vector-range 16)))))
+(display (call-graph->dot 
+           (expression->call-graph 
+             (cons 'list (vector->list (fft (vector-range 4)))))))
