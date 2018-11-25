@@ -4,10 +4,25 @@
 
   (import (rnrs (6))
           (pfds sequences)
-          (pfds hamts)
-          (cut)
+;          (pfds hamts)
+          (utility cut)
           (receive)
           (monads))
+
+  (define (make-hamt hash eqv?)
+    (make-hashtable hash eqv?))
+
+  (define (hamt-set t k v)
+    (hashtable-set! t k v)
+    t)
+
+  (define hamt-ref hashtable-ref)
+  (define hamt-contains? hashtable-contains?)
+
+  (define (print-hamt x)
+    (let-values (((k v) (hashtable-entries x)))
+      (display k) (newline)
+      (display v) (newline)))
 
   (define-record-type graph
     (fields nodes edges))
@@ -33,6 +48,7 @@
   (define (get-expr-id expr)
     (seq <state>
       (table <- (get-state :state-table))
+      ; (print-hamt table)
       (if (hamt-contains? table expr)
           (state-return (hamt-ref table expr #f))
           (seq <state>
@@ -55,18 +71,18 @@
       ((list? expr)
        (seq <state>
          (args  <- (seq-map <state> get-expr-id (cdr expr)))
-         (n     <- (add-node (car expr)))
+         (n     <- (add-node (list 'call (car expr) (length args))))
          (add-links n args)
          (state-return n)))
 
-      (else (add-node expr))))
+      (else (add-node (list 'data expr)))))
 
-  (define (add-node expr)
+  (define (add-node data)
     (seq <state>
       (nodes <- (get-state :state-nodes))
       (n     :: (sequence-size nodes))
       (update-state (cut :state-set-nodes <>
-                         (sequence-snoc nodes expr)))
+                         (sequence-snoc nodes data)))
       (state-return n)))
 
   (define (add-links n args)
@@ -83,7 +99,7 @@
       (state-return (make-graph nodes edges))))
 
   (define (expression->call-graph expr)
-    (let ((state (make-:state (make-sequence) '() (make-hamt equal-hash eq?))))
+    (let ((state (make-:state (make-sequence) '() (make-hamt equal-hash equal?))))
       (receive (graph _) ((expression->call-graph* expr) state)
         graph)))
 )

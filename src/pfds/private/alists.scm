@@ -17,11 +17,16 @@
         alist-update
         )
 (import (rnrs base)
-        (only (srfi :1 lists) assoc)
+        (rnrs lists)
+        (rnrs control)
+        ; (only (srfi :1 lists) assoc)
         )
 
+(define (srfi-assoc key alist eqv?)
+  (assp (lambda (x) (eqv? x key)) alist))
+
 (define (alist-ref alist key default eqv?)
-  (cond ((assoc key alist eqv?) => cdr)
+  (cond ((srfi-assoc key alist eqv?) => cdr)
         (else default)))
 
 (define (alist-set alist key value eqv?)

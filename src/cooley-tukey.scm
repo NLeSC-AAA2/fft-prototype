@@ -40,9 +40,14 @@
     (+ (array-offset a) (* (array-stride a) i))
     v))
 
-(define (:* . args) (cons '* args))
+(define (format-symbol fmt . args)
+  (string->symbol (apply format fmt args)))
+
+(define (:* . args) (cons '× args))
 (define (:+ . args) (cons '+ args))
 (define (:- . args) (cons '- args))
+(define (:wave-number k n) (format-symbol "w{}" k))
+(define (wave-number k n) (exp (* -2i pi (/ k n))))
 
 (define (fft! in out)
   (let* ((n (array-size in))
@@ -59,7 +64,9 @@
             ((= k m) '())
           (let* ((t (array-ref out k))
                  (u (array-ref out (+ k m)))
-                 (w (:* (exp (* -2 pi +i (/ k n))) u)))
+                 (w (if (zero? k)
+                        u
+                        (:* (:wave-number k n) u))))
             (array-set! out k       (:+ t w))
             (array-set! out (+ k m) (:- t w))))))))
 
@@ -73,17 +80,66 @@
 (define (vector-range n)
   (list->vector (range n)))
 
+(define (symbol-vector-range n fmt)
+  (list->vector (map (cut format-symbol fmt <>) (range n))))
+
+(define (symbol-range n fmt)
+  (map (cut format-symbol fmt <>) (range n)))
+
 ;(display (vector-range 16)) (newline)
 ;(display (fft (vector-range 16))) (newline)
 
+(define (function-node-html-table name n-args)
+  (let* ((args (append-map
+                 (lambda (port-name) 
+                   `((td (port . ,port-name) 
+                         (border . 1) (bgcolor . "#cccccc")
+                         (height . "5pt") (width . "20pt"))
+                     (/td)))
+                 (symbol-range n-args "p{}"))))
+  `((table (border . 0) (cellspacing . 0) (style . "ROUNDED"))
+      (tr) ,@args (/tr)
+      (tr) (td (border . 1) (colspan . ,n-args)) ,name (/td) (/tr)
+    (/table))))
+
+(define (format-html-list expr-list)
+  (apply string-append (map format-html expr-list)))
+
+(define (format-html expr)
+  (cond
+    ((string? expr) expr)
+    ((symbol? expr) (format "{:s}" expr))
+    ((and (pair? expr) (null? (cdr expr)))
+     (format "<{:s}>" (car expr))) 
+    ((pair? expr)
+     (format "<{} {}>" (car expr) (format-html-attrs (cdr expr))))
+    (else (raise (format "illegal html expr: {:s}" expr)))))
+
+(define (format-html-attrs attrs)
+  (string-join (map (lambda (kv-pair)
+                      (format "{:s}=\"{}\"" (car kv-pair) (cdr kv-pair)))
+                    attrs)
+               " "))
+
+(define (dot-function-node idx name n-args)
+  (let* ((html-table (format-html-list (function-node-html-table name n-args))))
+    (format "a{0} [shape=none label=<{1}>]" idx html-table)))
+
+(define (dot-node idx n)
+  (case (car n)
+    ((call) (dot-function-node idx (cadr n) (caddr n)))
+    ((data) (format "a{0} [shape=\"ellipse\" label=\"{1:s}\"]" idx (cadr n)))))
+
 (define (call-graph->dot g)
-  (let ((dot-nodes (map (cut format "a{} [label=\"{:s}\"]" <> <>)
+  (let ((dot-nodes (map dot-node 
                         (range (sequence-size (graph-nodes g)))
                         (sequence->list (graph-nodes g))))
         (dot-edges (append-map (lambda (e)
                                  (let ((to (car e))
                                        (froms (cdr e)))
-                                   (map (lambda (from) (format "a{} -> a{}" from to)) froms)))
+                                   (map (lambda (from p)
+                                          (format "a{} -> a{}:p{}" from to p))
+                                        froms (range (length froms)))))
                                (graph-edges g))))
     (format "digraph callgraph {{\n{}\n{}\n}}\n"
             (string-join dot-nodes "\n  ")
@@ -91,4 +147,5 @@
 
 (display (call-graph->dot 
            (expression->call-graph 
-             (cons 'list (vector->list (fft (vector-range 4)))))))
+             (cons 'output (vector->list (fft (symbol-vector-range 8 "x{}")))))))
+             ; (cons 'list (vector->list (fft (vector-range 8)))))))

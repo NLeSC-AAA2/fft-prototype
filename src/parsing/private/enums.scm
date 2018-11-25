@@ -1,7 +1,7 @@
 (library (enums)
   (export define-enum define-enum-transformer define-flags-transformer)
   (import (rnrs (6))
-          (rename (cut) (cut $))
+          (rename (utility cut) (cut $))
           (only (srfi srfi-43) vector-index)
           (functional)
           (gen-id))
