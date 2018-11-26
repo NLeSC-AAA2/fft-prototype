@@ -43,10 +43,11 @@
 (define (format-symbol fmt . args)
   (string->symbol (apply format fmt args)))
 
-(define (:* . args) (cons '× args))
-(define (:+ . args) (cons '+ args))
-(define (:- . args) (cons '- args))
-(define (:wave-number k n) (format-symbol "w{}" k))
+(define (:* . args) (cons* 'call '× args))
+(define (:+ . args) (cons* 'call '+ args))
+(define (:- . args) (cons* 'call '- args))
+(define (:wave-number k n) (list 'const (format-symbol "w{}" k)))
+
 (define (wave-number k n) (exp (* -2i pi (/ k n))))
 
 (define (fft! in out)
@@ -86,20 +87,28 @@
 (define (symbol-range n fmt)
   (map (cut format-symbol fmt <>) (range n)))
 
+(define (symbolic-input-range name n)
+  (list->vector
+    (map (lambda (i) `(input ,name ,i)) (range n))))
+
 ;(display (vector-range 16)) (newline)
 ;(display (fft (vector-range 16))) (newline)
 
-(define (function-node-html-table name n-args)
-  (let* ((args (append-map
-                 (lambda (port-name) 
-                   `((td (port . ,port-name) 
-                         (border . 1) (bgcolor . "#cccccc")
-                         (height . "5pt") (width . "20pt"))
-                     (/td)))
-                 (symbol-range n-args "p{}"))))
+(define (node-html-table name n-in n-out)
+  (let* ((td-attrs '((border . 1) (bgcolor . "#cccccc")
+                     (height . "5pt") (width . "20pt")))
+         (in-args  (append-map
+                     (lambda (port-name) 
+                       `((td (port . ,port-name) ,@td-attrs) (/td)))
+                     (symbol-range n-in "inp{}")))
+         (out-args (append-map
+                     (lambda (port-name)
+                       `((td (port . ,port-name) ,@td-attrs) (/td)))
+                     (symbol-range n-out "out{}"))))
   `((table (border . 0) (cellspacing . 0) (style . "ROUNDED"))
-      (tr) ,@args (/tr)
-      (tr) (td (border . 1) (colspan . ,n-args)) ,name (/td) (/tr)
+      ,@(if (not (zero? n-in)) `((tr) ,@in-args (/tr)) '())
+      (tr) (td (border . 1) (colspan . ,(max n-in n-out))) ,name (/td) (/tr)
+      ,@(if (not (zero? n-out)) `((tr) ,@out-args (/tr)) '())
     (/table))))
 
 (define (format-html-list expr-list)
@@ -121,31 +130,30 @@
                     attrs)
                " "))
 
-(define (dot-function-node idx name n-args)
-  (let* ((html-table (format-html-list (function-node-html-table name n-args))))
+(define (dot-table-node idx name n-in n-out)
+  (let* ((html-table (format-html-list (node-html-table name n-in n-out))))
     (format "a{0} [shape=none label=<{1}>]" idx html-table)))
 
 (define (dot-node idx n)
-  (case (car n)
-    ((call) (dot-function-node idx (cadr n) (caddr n)))
-    ((data) (format "a{0} [shape=\"ellipse\" label=\"{1:s}\"]" idx (cadr n)))))
+  (dot-table-node idx (node-name n) (node-n-in n) (node-n-out n)))
 
 (define (call-graph->dot g)
   (let ((dot-nodes (map dot-node 
                         (range (sequence-size (graph-nodes g)))
                         (sequence->list (graph-nodes g))))
-        (dot-edges (append-map (lambda (e)
-                                 (let ((to (car e))
-                                       (froms (cdr e)))
-                                   (map (lambda (from p)
-                                          (format "a{} -> a{}:p{}" from to p))
-                                        froms (range (length froms)))))
-                               (graph-edges g))))
+        (dot-edges (map (lambda (e)
+                          (let ((from-idx  (caar e))
+                                (from-port (cdar e))
+                                (to-idx    (cadr e))
+                                (to-port   (cddr e)))
+                            (format "a{}:out{} -> a{}:inp{}" from-idx from-port to-idx to-port)))
+                        (graph-edges g))))
     (format "digraph callgraph {{\n{}\n{}\n}}\n"
             (string-join dot-nodes "\n  ")
             (string-join dot-edges "\n  "))))
 
-(display (call-graph->dot 
-           (expression->call-graph 
-             (cons 'output (vector->list (fft (symbol-vector-range 8 "x{}")))))))
-             ; (cons 'list (vector->list (fft (vector-range 8)))))))
+(let* ((fft-expr  (fft (symbolic-input-range 'input 4)))
+       (fft-graph (expression->call-graph
+                    '((input 4))
+                     (cons* 'output (vector->list fft-expr)))))
+  (display (call-graph->dot fft-graph)) (newline))

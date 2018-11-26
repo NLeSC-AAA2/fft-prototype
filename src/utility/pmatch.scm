@@ -24,15 +24,15 @@
 ;        ,var  -- matches always and binds the var
 ;                 pattern must be linear! No check is done
 ;         _    -- matches always
-;        'exp  -- comparison with exp (using equal?)    REMOVED (August 8, 2012)
 ;        exp   -- comparison with exp (using equal?)
 ;        (<pattern1> <pattern2> ...) -- matches the list of patterns
 ;        (<pattern1> . <pattern2>)  -- ditto
 ;        ()    -- matches the empty list
 
-(library (pmatch)
+(library (utility pmatch)
   (export pmatch)
-  (import (rnrs (6)))
+  (import (rnrs (6))
+          (format))
 
   (define-syntax pmatch
     (syntax-rules (else guard)
@@ -49,8 +49,8 @@
       ((_ name v)
        (begin
          (if 'name
-             (printf "pmatch ~s failed\n~s\n" 'name v)
-             (printf "pmatch failed\n ~s\n" v))
+             (print "pmatch {:s} failed\n{:s}\n" 'name v)
+             (print "pmatch failed\n {:s}\n" v))
          (error 'pmatch "match failed")))
       ((_ name v (else e0 e ...)) (begin e0 e ...))
       ((_ name v (pat (guard g ...) e0 e ...) cs ...)

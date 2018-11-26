@@ -1,6 +1,6 @@
 (import (rnrs (6))
         (testing assertions)
-        (pmatch))
+        (utility pmatch))
 
 (define (test-pmatch)
   (assert-equal

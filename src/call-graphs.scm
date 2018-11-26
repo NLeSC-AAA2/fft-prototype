@@ -1,105 +1,115 @@
 (library (call-graphs)
   (export graph? make-graph graph-nodes graph-edges
-          expression->call-graph)
+          expression->call-graph
+          
+          node? node-name node-kind node-n-in node-n-out)
 
   (import (rnrs (6))
           (pfds sequences)
-;          (pfds hamts)
           (utility cut)
-          (receive)
+          (utility contexts)
+          (utility receive)
+          (utility pmatch)
+          (utility algorithms)
+          (format)
           (monads))
 
-  (define (make-hamt hash eqv?)
-    (make-hashtable hash eqv?))
+  (define-record-type node
+    (fields name kind n-in n-out))
 
-  (define (hamt-set t k v)
-    (hashtable-set! t k v)
-    t)
-
-  (define hamt-ref hashtable-ref)
-  (define hamt-contains? hashtable-contains?)
-
-  (define (print-hamt x)
-    (let-values (((k v) (hashtable-entries x)))
-      (display k) (newline)
-      (display v) (newline)))
-
+  #| A call graph is a collection of nodes and directed edges.
+   | Each node has a name, kind, number of input arguments and
+   | number of output arguments. The `kind` is one of `data`, 
+   | `call`.
+   | 
+   |
+   | Each edge is a pair of two pairs:
+   | 
+   |    ((from-idx . from-port) . (to-idx . to-port))
+   |#
   (define-record-type graph
     (fields nodes edges))
 
-  (define-record-type :state
+  (define-context builder
     (fields nodes edges table))
 
-  (define (:state-set-nodes s nodes)
-    (let ((edges (:state-edges s))
-          (table (:state-table s)))
-      (make-:state nodes edges table)))
+  (define (get-or-fail-node key)
+    (seq <state>
+      (table <- (get-state builder-table))
+      (item  :: (assoc key table))
+      (if item
+        (state-return (cdr item))
+        (raise (format "graph builder: key not found in table: {}" key)))))
 
-  (define (:state-set-edges s edges)
-    (let ((nodes (:state-nodes s))
-          (table (:state-table s)))
-      (make-:state nodes edges table)))
+  (define (get-or-create-node key name kind n-in n-out)
+    (seq <state>
+      (table <- (get-state builder-table))
+      (item  :: (assoc key table))
+      (if item
+        (state-return (cdr item))
+        (create-node key name kind n-in n-out))))
 
-  (define (:state-set-table s table)
-    (let ((nodes (:state-nodes s))
-          (edges (:state-edges s)))
-      (make-:state nodes edges table)))
+  (define (create-node key name kind n-in n-out)
+    (seq <state>
+      (n <- (get-state (lambda (b) (with-builder b (sequence-size nodes)))))
+      (update-state (lambda (b)
+                      (update-builder b
+                        (table (cons (cons key n) table))
+                        (nodes (sequence-snoc nodes (make-node name kind n-in n-out))))))
+      (state-return n)))
 
   (define (get-expr-id expr)
-    (seq <state>
-      (table <- (get-state :state-table))
-      ; (print-hamt table)
-      (if (hamt-contains? table expr)
-          (state-return (hamt-ref table expr #f))
-          (seq <state>
-            (n <- (add-new-expr expr))
-            (table <- (get-state :state-table))
-            (update-state (cut :state-set-table <>
-                               (hamt-set table expr n)))
-            (state-return n)))))
-
-  (define (seq-map M f . args)
-    (if (null? (car args))
-      ((monad-return M) '())
-      (seq M
-        (first <- (apply f (map car args)))
-        (rest  <- (apply seq-map M f (map cdr args)))
-        ((monad-return M) (cons first rest)))))
-
-  (define (add-new-expr expr)
-    (cond
-      ((list? expr)
+    (pmatch expr
+      ((output . ,args)
        (seq <state>
-         (args  <- (seq-map <state> get-expr-id (cdr expr)))
-         (n     <- (add-node (list 'call (car expr) (length args))))
+         (args <- (seq-map <state> get-expr-id args))
+         (n    <- (create-node '(output output) 'output 'output (length args) 0))
          (add-links n args)
-         (state-return n)))
+         (state-return (cons n 0))))
 
-      (else (add-node (list 'data expr)))))
+      ((input ,name ,index)
+       (seq <state>
+         (n <- (get-or-fail-node `(input ,name)))
+         (state-return (cons n index))))
 
-  (define (add-node data)
-    (seq <state>
-      (nodes <- (get-state :state-nodes))
-      (n     :: (sequence-size nodes))
-      (update-state (cut :state-set-nodes <>
-                         (sequence-snoc nodes data)))
-      (state-return n)))
+      ((const ,name)
+       (seq <state>
+         (n <- (get-or-create-node `(const ,name) name 'const 0 1))
+         (state-return (cons n 0))))
+
+      ((call ,f . ,args)
+       (seq <state>
+         (args <- (seq-map <state> get-expr-id args))
+         (n    <- (create-node `(call ,f) f 'call (length args) 1))
+         (add-links n args)
+         (state-return (cons n 0))))))
 
   (define (add-links n args)
     (seq <state>
-      (edges <- (get-state :state-edges))
-      (update-state (cut :state-set-edges <>
-                         (cons (cons n args) edges)))))
+      (new-edges :: (map (lambda (p arg) (cons arg (cons n p)))
+                         (range (length args)) args))
+      (update-state (lambda (b)
+                      (update-builder b
+                        (edges (append edges new-edges)))))))
 
   (define (expression->call-graph* expr)
     (seq <state>
       (get-expr-id expr)
-      (nodes <- (get-state :state-nodes))
-      (edges <- (get-state :state-edges))
+      (nodes <- (get-state builder-nodes))
+      (edges <- (get-state builder-edges))
       (state-return (make-graph nodes edges))))
 
-  (define (expression->call-graph expr)
-    (let ((state (make-:state (make-sequence) '() (make-hamt equal-hash equal?))))
-      (receive (graph _) ((expression->call-graph* expr) state)
+  (define (expression->call-graph input expr)
+    (let* ((nodes (list->sequence (map (lambda (x)
+                                         (pmatch x
+                                           ((,name ,n-out) (make-node name 'input 0 n-out))))
+                                       input)))
+           (table (map (lambda (i x)
+                         (pmatch x
+                           ((,name ,n-out) `((input ,name) . ,i))))
+                       (range (length input))
+                       input))
+           (builder (make-builder nodes '() table)))
+      (receive (graph _) ((expression->call-graph* expr) builder)
         graph)))
 )
