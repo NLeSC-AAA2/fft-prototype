@@ -152,8 +152,8 @@
             (string-join dot-nodes "\n  ")
             (string-join dot-edges "\n  "))))
 
-(let* ((fft-expr  (fft (symbolic-input-range 'input 4)))
+(let* ((fft-expr  (fft (symbolic-input-range 'input 8)))
        (fft-graph (expression->call-graph
-                    '((input 4))
+                    '((input 8))
                      (cons* 'output (vector->list fft-expr)))))
   (display (call-graph->dot fft-graph)) (newline))

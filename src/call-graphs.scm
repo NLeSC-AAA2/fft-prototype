@@ -58,6 +58,11 @@
                         (nodes (sequence-snoc nodes (make-node name kind n-in n-out))))))
       (state-return n)))
 
+  (define (find-node key)
+    (seq <state>
+      (table <- (get-state builder-table))
+      (state-return (assoc key table))))
+
   (define (get-expr-id expr)
     (pmatch expr
       ((output . ,args)
@@ -74,15 +79,19 @@
 
       ((const ,name)
        (seq <state>
-         (n <- (get-or-create-node `(const ,name) name 'const 0 1))
+         (n <- (create-node `(const ,name) name 'const 0 1))
          (state-return (cons n 0))))
 
       ((call ,f . ,args)
        (seq <state>
-         (args <- (seq-map <state> get-expr-id args))
-         (n    <- (create-node `(call ,f) f 'call (length args) 1))
-         (add-links n args)
-         (state-return (cons n 0))))))
+         (n    <- (find-node expr))
+         (if n
+           (state-return (cons (cdr n) 0))
+           (seq <state>
+             (args <- (seq-map <state> get-expr-id args))
+             (n    <- (create-node expr f 'call (length args) 1))
+             (add-links n args)
+             (state-return (cons n 0))))))))
 
   (define (add-links n args)
     (seq <state>
