@@ -2,7 +2,7 @@
   (export seq make-monad monad? monad-return monad-bind <- ::)
 
   (import (rnrs (6))
-          (receive)
+          (utility receive)
           (monads aux-keyword))
 
   (define-auxiliary-keywords <- ::)

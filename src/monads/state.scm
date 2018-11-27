@@ -3,7 +3,7 @@
           get-state set-state update-state)
 
   (import (rnrs (6))
-          (receive)
+          (utility receive)
           (monads monads))
 
   (define (state-bind m f)
