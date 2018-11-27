@@ -7,6 +7,6 @@ test:
 figures:
 	mkdir figures
 
-figures/cooley-tukey.svg: src/cooley-tukey.scm figures
-	guile -L src src/cooley-tukey.scm | dot -Tsvg > figures/cooley-tukey.svg
+figures/cooley-tukey.svg: scripts/cooley-tukey.scm figures
+	guile -L src scripts/cooley-tukey.scm | dot -Tsvg > figures/cooley-tukey.svg
 
