@@ -2,7 +2,7 @@
 .SILENT: figures
 
 test:
-	guile --debug -L src -L . scripts/run-tests.scm ./test
+	guile --debug -L scheme -L . scripts/run-tests.scm ./test
 
 figures:
 	mkdir figures
