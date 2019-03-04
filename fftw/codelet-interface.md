@@ -159,6 +159,7 @@ inline constexpr INT MAKE_VOLATILE_STRIDE(NPtr nptr, X x) { return 0; }
 The codelet has to declare its own structure using an instance of `ct_desc`. We don't need this boilerplate right now. We'll write an `awk` script to comment the boiler plate.
 
 ``` {.awk file=strip-boiler-plate.awk}
+/static void/ { gsub("static void", "extern \"C\" void", $0 ) }
 /static const tw_instr .*/, /.*};/ { printf "// " }
 /static const ct_desc .*/, /.*};/ { printf "// " }
 /void X\(codelet.*/, /}/ { printf "// " }
@@ -166,7 +167,11 @@ The codelet has to declare its own structure using an instance of `ct_desc`. We 
 1
 ```
 
+This also changes the signature of the codelet to `extern "C" void` instead of `static void`. This allows us to load the codelet function from its symbol.
+
 # Building a shared object
+
+This `Makefile` calls `genfft`, filters the output through our Awk script, and adds indentation. The generated sources are compiled using `-include codelet.hh` to include the macro definitions and linked to a shared library.
 
 ``` {.makefile file=Makefile}
 build_dir=build
@@ -212,7 +217,8 @@ Now we'll run the transform using `ctypes` and `numpy`.
 
 ``` {.py file=run-codelet.py}
 import numpy as np
-from ctypes import (cdll)
+from ctypes import (cdll, c_void_p, c_ssize_t)
+from collections import (namedtuple)
 
 <<codelet-signatures>>
 <<load-codelet>>
@@ -223,20 +229,29 @@ if __name__ == "__main__":
 
 ## Signatures
 
+Codelets from different generators have different signatures. The `notw` code seems to be the most *vanilla* fft. It takes pointers to real and imaginary input and output arrays (four in total), two strides, and a set of numbers indicating the layout of multiple FFTs to be performed. Other codelets seem to have similar signatures.
+
+If we look at the output for `twiddle` codelets, we see that only input pointers are taken. Is the FFT computed in place? The third pointer argument points to an array of twiddle numbers. This can be usefull when composing to larger FFTs.
+
 ``` {.py #codelet-signatures}
+CodeletSignature = namedtuple("CodeletSignature", ["return_type", "arg_types"])
+
 codelet_signatures = {
-    "twiddle": (None, [c_void_p, c_void_p, c_void_p, c_ssize_t, c_ssize_t, c_ssize_t]),
-    "notw":    (None, [c_void_p, c_void_p, c_void_p, c_void_p, c_ssize_t, c_ssize_t,
-                       c_ssize_t, c_ssize_t, c_ssize_t])
+    "twiddle": CodeletSignature(
+        None, [c_void_p, c_void_p, c_void_p, c_ssize_t, c_ssize_t, c_ssize_t]),
+    "notw":    CodeletSignature(
+        None, [c_void_p, c_void_p, c_void_p, c_void_p, c_ssize_t, c_ssize_t,
+               c_ssize_t, c_ssize_t, c_ssize_t])
 }
 ```
 
 ## Loading a codelet
 
 ``` {.py #load-codelet}
-def load_codelet(shared_object, function_name, signature, radix):
+def load_codelet(shared_object, function_name, signature, dtype, radix):
     <<load-function>>
     <<make-wrapper>>
+    return fft_notw
 ```
 
 First we load the `.so` file
@@ -244,16 +259,41 @@ First we load the `.so` file
 ``` {.py #load-function}
 lib = cdll.LoadLibrary(shared_object)
 fun = getattr(lib, function_name)
-fun.argtypes = codelet_signatures[signature][1]
+fun.argtypes = codelet_signatures[signature].arg_types
+dtype = np.dtype(dtype)
 ```
 
+Using the `notw` signature we can implement a wrapper for NumPy arrays
+
 ``` {.py #make-wrapper}
-def fft(input, output):
-    pass 
+def fft_notw(input_array, output_array):
+    assert(input_array.ndim == 1)
+    assert(output_array.ndim == 1)
+    assert(input_array.size == radix)
+    assert(output_array.size == radix)
+    if dtype == 'float32':
+        assert(input_array.dtype == 'complex64')
+        assert(output_array.dtype == 'complex64')
+    if dtype == 'float64':
+        assert(input_array.dtype == 'complex128')
+        assert(output_array.dtype == 'complex128')
+
+    float_size = dtype.itemsize
+    input_stride = input_array.strides[0] / float_size
+    output_stride = output_array.strides[0] / float_size
+    fun(input_array.ctypes.data, input_array.ctypes.data + float_size,
+        output_array.ctypes.data, output_array.ctypes.data + float_size,
+        input_stride, output_stride, 1, 0, 0)
 ```
 
 ## Main body
 
 ``` {.py #run-main}
-print("Hello, World!")
+fft7 = load_codelet("build/notw-7.gen.so", "fft", "notw", "float32", 7)
+x = np.arange(7, dtype='complex64')
+y = np.zeros_like(x)
+fft7(x, y)
+print(y)
+print(np.fft.fft(x))
 ```
+
