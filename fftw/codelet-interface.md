@@ -178,7 +178,7 @@ from ctypes import (cdll, c_void_p, c_ssize_t)
 from collections import (namedtuple)
 
 <<codelet-signatures>>
-<<load-codelet>>
+<<load-notw-codelet>>
 
 if __name__ == "__main__":
     <<run-main>>
@@ -204,8 +204,9 @@ codelet_signatures = {
 
 ## Loading a codelet
 
-``` {.py #load-codelet}
-def load_codelet(shared_object, function_name, signature, dtype, radix):
+``` {.py #load-notw-codelet}
+def load_notw_codelet(shared_object, function_name, dtype, radix):
+    signature = codelet_signatures["notw"]
     <<load-function>>
     <<make-wrapper>>
     return fft_notw
@@ -216,22 +217,26 @@ First we load the `.so` file
 ``` {.py #load-function}
 lib = cdll.LoadLibrary(shared_object)
 fun = getattr(lib, function_name)
-fun.argtypes = codelet_signatures[signature].arg_types
+fun.argtypes = signature.arg_types
 dtype = np.dtype(dtype)
 ```
 
 Using the `notw` signature we can implement a wrapper for NumPy arrays
 
+``` {.py #input-strides}
+float_size = dtype.itemsize
+input_strides = [s // float_size for s in input_array.strides]
+if input_array.ndim == 1:
+    n = 1
+else:
+    n = input_array.shape[0]
+```
+
 ``` {.py #make-wrapper}
 def fft_notw(input_array, output_array):
     <<notw-assertions>>
-    float_size = dtype.itemsize
-    input_strides = [s // float_size for s in input_array.strides]
+    <<input-strides>>
     output_strides = [s // float_size for s in output_array.strides]
-    if input_array.ndim == 1:
-        n = 1
-    else:
-        n = input_array.shape[0]
 
     fun(input_array.ctypes.data, input_array.ctypes.data + float_size,
         output_array.ctypes.data, output_array.ctypes.data + float_size,
@@ -249,7 +254,9 @@ if dtype == 'float32':
 if dtype == 'float64':
     assert(input_array.dtype == 'complex128')
     assert(output_array.dtype == 'complex128')
+```
 
+``` {.py #shape-assertions}
 if input_array.ndim == 1:
     assert(input_array.size == radix)
 elif input_array.ndim == 2:
@@ -258,10 +265,38 @@ else:
     raise ValueError("Expecting array of dimension 1 or 2.")
 ```
 
+## Twiddle codelet
+
+``` {.py #load-twiddle-codelet}
+def load_twiddle_codelet(shared_object, function_name, dtype, radix):
+    signature = codelet_signatures["twiddle"]
+    <<load-function>>
+
+    def fft_twiddle(input_array, twiddle_factors):
+        if dtype == 'float32':
+            assert(input_array.dtype == 'complex64')
+        if dtype == 'float64':
+            assert(input_array.dtype == 'complex128')
+        <<shape-assertions>>
+
+        n_w = 2 * (radix - 1)    
+        if input_array.ndim == 1:
+            assert(twiddle_factors.shape == (n_w,))
+        else:
+            assert(twiddle_factors.shape == (input_array.shape[0], n_w))
+
+        <<input-strides>>
+        fun(input_array.ctypes.data, input_array.ctypes.data + float_size,
+            twiddle_factors.ctypes.data,
+            input_strides[-1], 0, n, input_strides[0])
+
+    return fft_twiddle
+```
+
 ## Main body
 
 ``` {.py #run-main}
-fft7 = load_codelet("build/notw-7.gen.so", "fft", "notw", "float32", 7)
+fft7 = load_notw_codelet("build/notw-7.gen.so", "fft", "float32", 7)
 x = np.arange(7, dtype='complex64')
 y = np.zeros_like(x)
 fft7(x, y)
