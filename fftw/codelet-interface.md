@@ -172,7 +172,7 @@ clean:
 
 Now we'll run the transform using `ctypes` and `numpy`.
 
-``` {.py file=codelets.py}
+``` {.py file=test-codelets.py}
 import numpy as np
 from ctypes import (cdll, c_void_p, c_ssize_t)
 from collections import (namedtuple)
