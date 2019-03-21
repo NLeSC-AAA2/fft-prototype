@@ -190,7 +190,7 @@ Codelets from different generators have different signatures. The `notw` code se
 
 If we look at the output for `twiddle` codelets, we see that only input pointers are taken. Is the FFT computed in place? The third pointer argument points to an array of twiddle numbers. This can be usefull when composing to larger FFTs.
 
-``` {.py #codelet-signatures}
+``` {.python #codelet-signatures}
 CodeletSignature = namedtuple("CodeletSignature", ["return_type", "arg_types"])
 
 codelet_signatures = {
@@ -204,7 +204,7 @@ codelet_signatures = {
 
 ## Loading a codelet
 
-``` {.py #load-notw-codelet}
+``` {.python #load-notw-codelet}
 def load_notw_codelet(shared_object, function_name, dtype, radix):
     signature = codelet_signatures["notw"]
     <<load-function>>
@@ -214,7 +214,7 @@ def load_notw_codelet(shared_object, function_name, dtype, radix):
 
 First we load the `.so` file
 
-``` {.py #load-function}
+``` {.python #load-function}
 lib = cdll.LoadLibrary(shared_object)
 fun = getattr(lib, function_name)
 fun.argtypes = signature.arg_types
@@ -223,7 +223,7 @@ dtype = np.dtype(dtype)
 
 Using the `notw` signature we can implement a wrapper for NumPy arrays
 
-``` {.py #input-strides}
+``` {.python #input-strides}
 float_size = dtype.itemsize
 input_strides = [s // float_size for s in input_array.strides]
 if input_array.ndim == 1:
@@ -232,7 +232,7 @@ else:
     n = input_array.shape[0]
 ```
 
-``` {.py #make-wrapper}
+``` {.python #make-wrapper}
 def fft_notw(input_array, output_array):
     <<notw-assertions>>
     <<input-strides>>
@@ -246,7 +246,7 @@ def fft_notw(input_array, output_array):
 
 To guard against errors we have to make some assertions. These could be disabled if performance becomes an issue, but I don't think this code will ever be used in that way.
 
-``` {.py #notw-assertions}
+``` {.python #notw-assertions}
 assert(input_array.shape == output_array.shape)
 if dtype == 'float32':
     assert(input_array.dtype == 'complex64')
@@ -256,7 +256,7 @@ if dtype == 'float64':
     assert(output_array.dtype == 'complex128')
 ```
 
-``` {.py #shape-assertions}
+``` {.python #shape-assertions}
 if input_array.ndim == 1:
     assert(input_array.size == radix)
 elif input_array.ndim == 2:
@@ -267,7 +267,7 @@ else:
 
 ## Twiddle codelet
 
-``` {.py #load-twiddle-codelet}
+``` {.python #load-twiddle-codelet}
 def load_twiddle_codelet(shared_object, function_name, dtype, radix):
     signature = codelet_signatures["twiddle"]
     <<load-function>>
@@ -279,7 +279,8 @@ def load_twiddle_codelet(shared_object, function_name, dtype, radix):
             assert(input_array.dtype == 'complex128')
         <<shape-assertions>>
 
-        n_w = 2 * (radix - 1)    
+        n_w = radix - 1
+        assert(input_array.dtype == twiddle_factors.dtype)
         if input_array.ndim == 1:
             assert(twiddle_factors.shape == (n_w,))
         else:
@@ -293,9 +294,109 @@ def load_twiddle_codelet(shared_object, function_name, dtype, radix):
     return fft_twiddle
 ```
 
+## Using twiddles
+
+If we compare the radix-2 twiddle codelet
+
+``` {.c}
+void
+unnamed (R * ri, R * ii, const R * W, stride rs, INT mb, INT me, INT ms)
+{
+  {
+    INT m;
+    for (m = mb, W = W + (mb * 2); m < me;
+         m = m + 1, ri = ri + ms, ii = ii + ms, W =
+         W + 2, MAKE_VOLATILE_STRIDE (4, rs))
+      {
+        E T1, T8, T6, T7;
+        T1 = ri[0];
+        T8 = ii[0];
+        {
+          E T3, T5, T2, T4;
+          T3 = ri[WS (rs, 1)];
+          T5 = ii[WS (rs, 1)];
+          T2 = W[0];
+          T4 = W[1];
+          T6 = FMA (T2, T3, T4 * T5);
+          T7 = FNMS (T4, T3, T2 * T5);
+        }
+        ri[WS (rs, 1)] = T1 - T6;
+        ii[WS (rs, 1)] = T8 - T7;
+        ri[0] = T1 + T6;
+        ii[0] = T7 + T8;
+      }
+  }
+}
+```
+
+$$\begin{aligned}
+ro_0 &= ri_0 + w_0 * ri_1 + w_1 * ii_1 \\
+ro_1 &= ri_0 - w_0 * ri_1 - w_1 * ii_1 \\
+io_0 &= ii_0 - w_1 * ri_1 + w_0 * ii_1 \\
+io_1 &= ii_0 + w_1 * ri_1 - w_0 * ii_1
+\end{aligned}$$
+
+(check signs) having,
+
+$$w_n^k z_k = (a + ib) (x + iy) = ax - by + i(bx + ay)$$
+
+Are the weights conjugated?
+
+$$\begin{aligned}
+o_0 &= i_0 + w_0^* i_1\\
+o_1 &= i_0 - w_1^* i_1
+\end{aligned}
+
+with the radix-2 non-twiddle codelet
+
+``` {.c}
+void
+unnamed (const R * ri, const R * ii, R * ro, R * io, stride is, stride os,
+         INT v, INT ivs, INT ovs)
+{
+  {
+    INT i;
+    for (i = v; i > 0;
+         i = i - 1, ri = ri + ivs, ii = ii + ivs, ro = ro + ovs, io =
+         io + ovs, MAKE_VOLATILE_STRIDE (8, is), MAKE_VOLATILE_STRIDE (8, os))
+      {
+        E T1, T2, T3, T4;
+        T1 = ri[0];
+        T2 = ri[WS (is, 1)];
+        ro[WS (os, 1)] = T1 - T2;
+	
+        ro[0] = T1 + T2;
+        T3 = ii[0];
+        T4 = ii[WS (is, 1)];
+        io[WS (os, 1)] = T3 - T4;
+        io[0] = T3 + T4;
+      }
+  }
+}
+```
+
+We may learn how twiddle factors are incorporated.
+
+$$\begin{aligned}
+ro_0 &= ri_0 + ri_1 \\
+ro_1 &= ri_0 - ri_1 \\
+io_0 &= ii_0 + ii_1 \\
+io_1 &= ii_0 - ii_1
+\end{aligned}$$
+
+or
+
+$$\begin{aligned}
+o_0 &= i_0 + i_1 \\
+o_1 &= i_0 - i_1 \\
+$$\end{aligned}
+
+We know that the input values need to be multiplied with twiddle factors, but the twiddle for $i_0$ is always 1.
+
+
 ## Main body
 
-``` {.py #run-main}
+``` {.python #run-main}
 fft7 = load_notw_codelet("build/notw-7.gen.so", "fft", "float32", 7)
 x = np.arange(7, dtype='complex64')
 y = np.zeros_like(x)

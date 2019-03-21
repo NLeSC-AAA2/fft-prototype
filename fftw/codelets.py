@@ -26,7 +26,7 @@ default_config = {
 
 codelet_signatures = {
     "twiddle": CodeletSignature(
-        None, [c_void_p, c_void_p, c_void_p, c_ssize_t, c_ssize_t, c_ssize_t]),
+        None, [c_void_p, c_void_p, c_void_p, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw":    CodeletSignature(
         None, [c_void_p, c_void_p, c_void_p, c_void_p, c_ssize_t, c_ssize_t,
                c_ssize_t, c_ssize_t, c_ssize_t])
@@ -189,7 +189,8 @@ def load_twiddle_codelet(shared_object, function_name, dtype, radix):
             raise ValueError("Expecting array of dimension 1 or 2.")
         ## ------ end
 
-        n_w = 2 * (radix - 1)    
+        n_w = radix - 1
+        assert(input_array.dtype == twiddle_factors.dtype)
         if input_array.ndim == 1:
             assert(twiddle_factors.shape == (n_w,))
         else:
