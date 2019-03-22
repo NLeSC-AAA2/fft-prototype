@@ -1,7 +1,6 @@
 build
-codelet.hh
-Makefile
-codelets.py
 strip-boiler-plate.awk
 .ipynb_checkpoints
 __pycache__
+lib
+
