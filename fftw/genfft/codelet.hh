@@ -1,4 +1,4 @@
-// ------ language="C++" file="codelet.hh"
+// ------ language="C++" file="genfft/codelet.hh"
 #include <cstddef>
 
 // ------ begin <<real-types>>[0]

@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Johan Hidding (NLeSC)" />
+  <title>Interfacing FFTW codelets</title>
+  <style type="text/css">
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <style type="text/css">
+a.sourceLine { display: inline-block; line-height: 1.25; }
+a.sourceLine { pointer-events: none; color: inherit; text-decoration: inherit; }
+a.sourceLine:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode { white-space: pre; position: relative; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+code.sourceCode { white-space: pre-wrap; }
+a.sourceLine { text-indent: -1em; padding-left: 1em; }
+}
+pre.numberSource a.sourceLine
+  { position: relative; left: -4em; }
+pre.numberSource a.sourceLine::before
+  { content: attr(title);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; pointer-events: all; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {  }
+@media screen {
+a.sourceLine::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="style.css" />
+  <script src="/usr/share/javascript/mathjax/MathJax.js?config=TeX-AMS_CHTML-full" type="text/javascript"></script>
+  <link href="https://fonts.googleapis.com/css?family=Dosis" rel="stylesheet">
+</head>
+<body>
+<header>
+<h1 class="title">Interfacing FFTW codelets</h1>
+<p class="author">Johan Hidding (NLeSC)</p>
+</header>
+<nav id="TOC">
+<ul>
+<li><a href="#macro-definitions">Macro definitions</a><ul>
+<li><a href="#real-types">Real types</a></li>
+<li><a href="#integer-types">Integer types</a></li>
+<li><a href="#fused-arithmetic">Fused arithmetic</a></li>
+<li><a href="#array-indices">Array indices</a></li>
+<li><a href="#boiler-plate">Boiler plate</a></li>
+</ul></li>
+<li><a href="#building-a-shared-object">Building a shared object</a></li>
+<li><a href="#running-codelets-from-python">Running codelets from Python</a><ul>
+<li><a href="#signatures">Signatures</a></li>
+<li><a href="#loading-a-codelet">Loading a codelet</a></li>
+<li><a href="#main-body">Main body</a></li>
+</ul></li>
+<li><a href="#building-codelets-from-python">Building codelets from Python</a></li>
+<li><a href="#cooley-tukey-algorithm">Cooley-Tukey algorithm</a><ul>
+<li><a href="#the-twiddle-codelet">The twiddle codelet</a></li>
+<li><a href="#making-a-larger-transform">Making a larger transform</a></li>
+<li><a href="#using-the-twiddle-codelet">Using the twiddle codelet</a></li>
+<li><a href="#module">Module</a></li>
+</ul></li>
+</ul>
+</nav>
+<p>FFTW3 includes a generator for <em>codelets</em> that implement smallish FFT algorithms in C. This generator, called <code>genfft</code> is written in OCAML and generates code that is written if not in C, in a generator DSL consisting purely of macros. None of this is documented very well.</p>
+<p>This is an attempt to run FFTW codelets outside the context of the larger FFTW library.</p>
+<p>An example of <code>gen_twiddle</code> output, piped through <code>indent -nut</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode c"><code class="sourceCode c"><a class="sourceLine" id="cb1-1" title="1"><span class="co">/* Generated by: ./gen_notw.native -n 3 -standalone -compact */</span></a>
+<a class="sourceLine" id="cb1-2" title="2"></a>
+<a class="sourceLine" id="cb1-3" title="3"><span class="co">/*</span></a>
+<a class="sourceLine" id="cb1-4" title="4"><span class="co"> * This function contains 12 FP additions, 4 FP multiplications,</span></a>
+<a class="sourceLine" id="cb1-5" title="5"><span class="co"> * (or, 10 additions, 2 multiplications, 2 fused multiply/add),</span></a>
+<a class="sourceLine" id="cb1-6" title="6"><span class="co"> * 15 stack variables, 2 constants, and 12 memory accesses</span></a>
+<a class="sourceLine" id="cb1-7" title="7"><span class="co"> */</span></a>
+<a class="sourceLine" id="cb1-8" title="8"><span class="dt">void</span></a>
+<a class="sourceLine" id="cb1-9" title="9">unnamed (<span class="dt">const</span> R * ri, <span class="dt">const</span> R * ii, R * ro, R * io, stride is, stride os,</a>
+<a class="sourceLine" id="cb1-10" title="10">         INT v, INT ivs, INT ovs)</a>
+<a class="sourceLine" id="cb1-11" title="11">{</a>
+<a class="sourceLine" id="cb1-12" title="12">  DK (KP500000000, <span class="fl">+0.500000000000000000000000000000000000000000000</span>);</a>
+<a class="sourceLine" id="cb1-13" title="13">  DK (KP866025403, <span class="fl">+0.866025403784438646763723170752936183471402627</span>);</a>
+<a class="sourceLine" id="cb1-14" title="14">  {</a>
+<a class="sourceLine" id="cb1-15" title="15">    INT i;</a>
+<a class="sourceLine" id="cb1-16" title="16">    <span class="cf">for</span> (i = v; i &gt; <span class="dv">0</span>;</a>
+<a class="sourceLine" id="cb1-17" title="17">         i = i - <span class="dv">1</span>, ri = ri + ivs, ii = ii + ivs, ro = ro + ovs, io =</a>
+<a class="sourceLine" id="cb1-18" title="18">         io + ovs, MAKE_VOLATILE_STRIDE (<span class="dv">12</span>, is), MAKE_VOLATILE_STRIDE (<span class="dv">12</span>,</a>
+<a class="sourceLine" id="cb1-19" title="19">                                                                        os))</a>
+<a class="sourceLine" id="cb1-20" title="20">      {</a>
+<a class="sourceLine" id="cb1-21" title="21">        E T1, T9, T4, Tc, T8, Ta, T5, Tb;</a>
+<a class="sourceLine" id="cb1-22" title="22">        T1 = ri[<span class="dv">0</span>];</a>
+<a class="sourceLine" id="cb1-23" title="23">        T9 = ii[<span class="dv">0</span>];</a>
+<a class="sourceLine" id="cb1-24" title="24">        {</a>
+<a class="sourceLine" id="cb1-25" title="25">          E T2, T3, T6, T7;</a>
+<a class="sourceLine" id="cb1-26" title="26">          T2 = ri[WS (is, <span class="dv">1</span>)];</a>
+<a class="sourceLine" id="cb1-27" title="27">          T3 = ri[WS (is, <span class="dv">2</span>)];</a>
+<a class="sourceLine" id="cb1-28" title="28">          T4 = T2 + T3;</a>
+<a class="sourceLine" id="cb1-29" title="29">          Tc = KP866025403 * (T2 - T3);</a>
+<a class="sourceLine" id="cb1-30" title="30">          T6 = ii[WS (is, <span class="dv">1</span>)];</a>
+<a class="sourceLine" id="cb1-31" title="31">          T7 = ii[WS (is, <span class="dv">2</span>)];</a>
+<a class="sourceLine" id="cb1-32" title="32">          T8 = KP866025403 * (T6 - T7);</a>
+<a class="sourceLine" id="cb1-33" title="33">          Ta = T6 + T7;</a>
+<a class="sourceLine" id="cb1-34" title="34">        }</a>
+<a class="sourceLine" id="cb1-35" title="35">        ro[<span class="dv">0</span>] = T1 + T4;</a>
+<a class="sourceLine" id="cb1-36" title="36">        io[<span class="dv">0</span>] = T9 + Ta;</a>
+<a class="sourceLine" id="cb1-37" title="37">        T5 = FNMS (KP500000000, T4, T1);</a>
+<a class="sourceLine" id="cb1-38" title="38">        ro[WS (os, <span class="dv">2</span>)] = T5 - T8;</a>
+<a class="sourceLine" id="cb1-39" title="39">        ro[WS (os, <span class="dv">1</span>)] = T5 + T8;</a>
+<a class="sourceLine" id="cb1-40" title="40">        Tb = FNMS (KP500000000, Ta, T9);</a>
+<a class="sourceLine" id="cb1-41" title="41">        io[WS (os, <span class="dv">1</span>)] = Tb - Tc;</a>
+<a class="sourceLine" id="cb1-42" title="42">        io[WS (os, <span class="dv">2</span>)] = Tc + Tb;</a>
+<a class="sourceLine" id="cb1-43" title="43">      }</a>
+<a class="sourceLine" id="cb1-44" title="44">  }</a>
+<a class="sourceLine" id="cb1-45" title="45">}</a></code></pre></div>
+<h2 id="macro-definitions">Macro definitions</h2>
+<p>The macros are defined in <code>kernel/ifftw.h</code>. The top codelet include file is <code>dft/codelet-dft.h</code>. I will copy these definitions here in minimal form, for single precision floating points. The goal is just being able to compile the (non SIMD) codelets and see what they actually compute using Python and a <code>ctypes</code> interface.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode cpp"><code class="sourceCode cpp"><a class="sourceLine" id="cb2-1" title="1"><span class="pp">#include </span><span class="im">&lt;cstddef&gt;</span></a>
+<a class="sourceLine" id="cb2-2" title="2"></a>
+<a class="sourceLine" id="cb2-3" title="3">&lt;&lt;real-types&gt;&gt;</a>
+<a class="sourceLine" id="cb2-4" title="4">&lt;&lt;integer-types&gt;&gt;</a>
+<a class="sourceLine" id="cb2-5" title="5">&lt;&lt;fused-arithmetic&gt;&gt;</a>
+<a class="sourceLine" id="cb2-6" title="6">&lt;&lt;array-indices&gt;&gt;</a></code></pre></div>
+<h3 id="real-types">Real types</h3>
+<p><em>«real-types»=</em></p>
+<div class="sourceCode" id="real-types"><pre class="sourceCode cpp"><code class="sourceCode cpp"><a class="sourceLine" id="real-types-1" title="1"><span class="kw">using</span> R = <span class="dt">float</span>;</a>
+<a class="sourceLine" id="real-types-2" title="2"><span class="kw">using</span> E = R;</a>
+<a class="sourceLine" id="real-types-3" title="3"></a>
+<a class="sourceLine" id="real-types-4" title="4"><span class="pp">#define K</span>(x)<span class="pp"> </span>((E)<span class="pp"> </span>x)</a>
+<a class="sourceLine" id="real-types-5" title="5"><span class="pp">#define DK</span>(name,<span class="pp"> </span>value)<span class="pp"> </span><span class="at">const</span><span class="pp"> </span>E<span class="pp"> </span>name<span class="pp"> </span>=<span class="pp"> </span>K(value)</a></code></pre></div>
+<h3 id="integer-types">Integer types</h3>
+<p>These are used as strides and indices.</p>
+<p><em>«integer-types»=</em></p>
+<div class="sourceCode" id="integer-types"><pre class="sourceCode cpp"><code class="sourceCode cpp"><a class="sourceLine" id="integer-types-1" title="1"><span class="kw">using</span> INT = <span class="dt">ptrdiff_t</span>;</a></code></pre></div>
+<h3 id="fused-arithmetic">Fused arithmetic</h3>
+<p>Many of these operations can be optimised, also known as fused multiply-accumulate operations. Variants on these are implemented as static inline functions.</p>
+<p><em>«fused-arithmetic»=</em></p>
+<div class="sourceCode" id="fused-arithmetic"><pre class="sourceCode cpp"><code class="sourceCode cpp"><a class="sourceLine" id="fused-arithmetic-1" title="1"><span class="kw">inline</span> E FMA(E a, E b, E c) { <span class="cf">return</span> a * b + c; }</a>
+<a class="sourceLine" id="fused-arithmetic-2" title="2"><span class="kw">inline</span> E FMS(E a, E b, E c) { <span class="cf">return</span> a * b - c; }</a>
+<a class="sourceLine" id="fused-arithmetic-3" title="3"><span class="kw">inline</span> E FNMA(E a, E b, E c) { <span class="cf">return</span> -a * b - c; }</a>
+<a class="sourceLine" id="fused-arithmetic-4" title="4"><span class="kw">inline</span> E FNMS(E a, E b, E c) { <span class="cf">return</span> -a * b + c; }</a></code></pre></div>
+<h3 id="array-indices">Array indices</h3>
+<p>A lot of the FFTW trickery involves fooling the compiler so that it does <em>not</em> try to optimise stuff. We will assume that the compiler is actually nice.</p>
+<p><em>«array-indices»=</em></p>
+<div class="sourceCode" id="array-indices"><pre class="sourceCode cpp"><code class="sourceCode cpp"><a class="sourceLine" id="array-indices-1" title="1"><span class="kw">using</span> stride = INT;</a>
+<a class="sourceLine" id="array-indices-2" title="2"></a>
+<a class="sourceLine" id="array-indices-3" title="3"><span class="kw">template</span> &lt;<span class="kw">typename</span> T&gt;</a>
+<a class="sourceLine" id="array-indices-4" title="4"><span class="kw">inline</span> INT WS(stride s, T i) { <span class="cf">return</span> s * i; }</a>
+<a class="sourceLine" id="array-indices-5" title="5"></a>
+<a class="sourceLine" id="array-indices-6" title="6"><span class="kw">template</span> &lt;<span class="kw">typename</span> NPtr, <span class="kw">typename</span> X&gt;</a>
+<a class="sourceLine" id="array-indices-7" title="7"><span class="kw">inline</span> <span class="kw">constexpr</span> INT MAKE_VOLATILE_STRIDE(NPtr nptr, X x) { <span class="cf">return</span> <span class="dv">0</span>; }</a></code></pre></div>
+<h3 id="boiler-plate">Boiler plate</h3>
+<p>The codelet has to declare its own structure using an instance of <code>ct_desc</code>. We don’t need this boilerplate right now. We’ll write an <code>awk</code> script to comment the boiler plate.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode awk"><code class="sourceCode awk"><a class="sourceLine" id="cb3-1" title="1"><span class="ot">/</span><span class="ss">void</span><span class="ot">/</span> { <span class="fu">gsub</span>(<span class="st">&quot;void&quot;</span>, <span class="st">&quot;extern </span><span class="sc">\</span><span class="er">&quot;</span><span class="st">C</span><span class="sc">\</span><span class="er">&quot;</span><span class="st"> void&quot;</span>, <span class="dt">$0</span> ) }</a>
+<a class="sourceLine" id="cb3-2" title="2"><span class="dv">1</span></a></code></pre></div>
+<p>This also changes the signature of the codelet to <code>extern &quot;C&quot; void</code> instead of <code>static void</code>. This allows us to load the codelet function from its symbol.</p>
+<h2 id="building-a-shared-object">Building a shared object</h2>
+<p>This <code>Makefile</code> calls <code>genfft</code>, filters the output through our Awk script, and adds indentation. The generated sources are compiled using <code>-include codelet.hh</code> to include the macro definitions and linked to a shared library.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode makefile"><code class="sourceCode makefile"><a class="sourceLine" id="cb4-1" title="1"><span class="dt">build_dir</span><span class="ch">=</span><span class="st">build</span></a>
+<a class="sourceLine" id="cb4-2" title="2"><span class="dt">compile</span><span class="ch">=</span><span class="st">g++</span></a>
+<a class="sourceLine" id="cb4-3" title="3"><span class="dt">link</span><span class="ch">=</span><span class="st">g++</span></a>
+<a class="sourceLine" id="cb4-4" title="4"></a>
+<a class="sourceLine" id="cb4-5" title="5"><span class="dt">codelet_dir</span><span class="ch">=</span><span class="st">build</span></a>
+<a class="sourceLine" id="cb4-6" title="6"><span class="dt">codelet_name</span><span class="ch">=</span><span class="st">fft</span></a>
+<a class="sourceLine" id="cb4-7" title="7"><span class="dt">codelet_cflags</span><span class="ch">=</span><span class="st">-O3 -fpic -include codelet.hh</span></a>
+<a class="sourceLine" id="cb4-8" title="8"><span class="dt">codelet_ldflags</span><span class="ch">=</span><span class="st">-shared</span></a>
+<a class="sourceLine" id="cb4-9" title="9"></a>
+<a class="sourceLine" id="cb4-10" title="10"><span class="ot">.PHONY:</span><span class="dt"> clean all</span></a>
+<a class="sourceLine" id="cb4-11" title="11"></a>
+<a class="sourceLine" id="cb4-12" title="12"><span class="co">## prevent intermediate files from being deleted</span></a>
+<a class="sourceLine" id="cb4-13" title="13"><span class="ot">.SECONDARY:</span></a>
+<a class="sourceLine" id="cb4-14" title="14"></a>
+<a class="sourceLine" id="cb4-15" title="15"><span class="dv">all:</span><span class="dt">    </span><span class="ch">$(</span><span class="dt">build_dir</span><span class="ch">)</span><span class="dt">/twiddle-7.gen.so </span><span class="ch">\</span></a>
+<a class="sourceLine" id="cb4-16" title="16"><span class="dt">    </span><span class="ch">$(</span><span class="dt">build_dir</span><span class="ch">)</span><span class="dt">/notw-7.gen.so </span><span class="ch">\</span></a>
+<a class="sourceLine" id="cb4-17" title="17"><span class="dt">    </span><span class="ch">$(</span><span class="dt">build_dir</span><span class="ch">)</span><span class="dt">/notw-21.gen.so</span></a>
+<a class="sourceLine" id="cb4-18" title="18"></a>
+<a class="sourceLine" id="cb4-19" title="19"><span class="dv">$(codelet_dir)/%.gen.cc :</span><span class="dt"> Makefile strip-boiler-plate.awk</span></a>
+<a class="sourceLine" id="cb4-20" title="20">    <span class="ch">@</span><span class="fu">mkdir -p </span><span class="ch">$(</span><span class="dt">@D</span><span class="ch">)</span></a>
+<a class="sourceLine" id="cb4-21" title="21">    variant=<span class="ch">$(</span><span class="kw">word</span><span class="st"> 1</span><span class="kw">,</span><span class="st"> </span><span class="ch">$(</span><span class="kw">subst</span><span class="st"> -</span><span class="kw">,</span><span class="st"> </span><span class="kw">,</span><span class="ch">$*))</span>; <span class="ch">\</span></a>
+<a class="sourceLine" id="cb4-22" title="22">    radix=<span class="ch">$(</span><span class="kw">word</span><span class="st"> 2</span><span class="kw">,</span><span class="st"> </span><span class="ch">$(</span><span class="kw">subst</span><span class="st"> -</span><span class="kw">,</span><span class="st"> </span><span class="kw">,</span><span class="ch">$*))</span>; <span class="ch">\</span></a>
+<a class="sourceLine" id="cb4-23" title="23">    ../genfft/gen_<span class="ch">$$</span>{variant}.native -n <span class="ch">$$</span>{radix} -name <span class="ch">$(</span><span class="dt">codelet_name</span><span class="ch">)</span> <span class="ch">\</span></a>
+<a class="sourceLine" id="cb4-24" title="24">        -standalone -compact -rader-min 17 -circular-min 3 <span class="ch">\</span></a>
+<a class="sourceLine" id="cb4-25" title="25">    | awk -f strip-boiler-plate.awk <span class="ch">\</span></a>
+<a class="sourceLine" id="cb4-26" title="26">    | indent -nut &gt; <span class="ch">$@</span></a>
+<a class="sourceLine" id="cb4-27" title="27"></a>
+<a class="sourceLine" id="cb4-28" title="28"><span class="dv">$(build_dir)/%.gen.o :</span><span class="dt"> </span><span class="ch">$(</span><span class="dt">codelet_dir</span><span class="ch">)</span><span class="dt">/%.gen.cc codelet.hh</span></a>
+<a class="sourceLine" id="cb4-29" title="29">    <span class="ch">@</span><span class="fu">mkdir -p </span><span class="ch">$(</span><span class="dt">@D</span><span class="ch">)</span></a>
+<a class="sourceLine" id="cb4-30" title="30">    <span class="ch">$(</span><span class="dt">compile</span><span class="ch">)</span> <span class="ch">$(</span><span class="dt">codelet_cflags</span><span class="ch">)</span> -c <span class="ch">$&lt;</span> -o <span class="ch">$@</span></a>
+<a class="sourceLine" id="cb4-31" title="31"></a>
+<a class="sourceLine" id="cb4-32" title="32"><span class="dv">$(build_dir)/%.gen.so :</span><span class="dt"> </span><span class="ch">$(</span><span class="dt">build_dir</span><span class="ch">)</span><span class="dt">/%.gen.o</span></a>
+<a class="sourceLine" id="cb4-33" title="33">    <span class="ch">@</span><span class="fu">mkdir -p </span><span class="ch">$(</span><span class="dt">@D</span><span class="ch">)</span></a>
+<a class="sourceLine" id="cb4-34" title="34">    <span class="ch">$(</span><span class="dt">link</span><span class="ch">)</span> <span class="ch">$^</span> <span class="ch">$(</span><span class="dt">codelet_ldflags</span><span class="ch">)</span> -o <span class="ch">$@</span></a>
+<a class="sourceLine" id="cb4-35" title="35"></a>
+<a class="sourceLine" id="cb4-36" title="36"><span class="dv">clean:</span></a>
+<a class="sourceLine" id="cb4-37" title="37">    <span class="ch">-</span><span class="fu">rm -rf </span><span class="ch">$(</span><span class="dt">build_dir</span><span class="ch">)</span></a></code></pre></div>
+<h2 id="running-codelets-from-python">Running codelets from Python</h2>
+<p>Now we’ll run the transform using <code>ctypes</code> and <code>numpy</code>.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode py"><code class="sourceCode python"><a class="sourceLine" id="cb5-1" title="1"><span class="im">import</span> numpy <span class="im">as</span> np</a>
+<a class="sourceLine" id="cb5-2" title="2"><span class="im">from</span> ctypes <span class="im">import</span> (cdll, c_void_p, c_ssize_t)</a>
+<a class="sourceLine" id="cb5-3" title="3"><span class="im">from</span> collections <span class="im">import</span> (namedtuple)</a>
+<a class="sourceLine" id="cb5-4" title="4"></a>
+<a class="sourceLine" id="cb5-5" title="5"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>signatures<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb5-6" title="6"><span class="op">&lt;&lt;</span>load<span class="op">-</span>notw<span class="op">-</span>codelet<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb5-7" title="7"></a>
+<a class="sourceLine" id="cb5-8" title="8"><span class="cf">if</span> <span class="va">__name__</span> <span class="op">==</span> <span class="st">&quot;__main__&quot;</span>:</a>
+<a class="sourceLine" id="cb5-9" title="9">    <span class="op">&lt;&lt;</span>run<span class="op">-</span>main<span class="op">&gt;&gt;</span></a></code></pre></div>
+<h3 id="signatures">Signatures</h3>
+<p>Codelets from different generators have different signatures. The <code>notw</code> code seems to be the most <em>vanilla</em> fft. It takes pointers to real and imaginary input and output arrays (four in total), two strides, and a set of numbers indicating the layout of multiple FFTs to be performed. Other codelets seem to have similar signatures.</p>
+<p>If we look at the output for <code>twiddle</code> codelets, we see that only input pointers are taken. This is because the twiddle codelets are computed in place. The third pointer argument points to an array of twiddle numbers. This is usefull when composing to larger FFTs.</p>
+<p><em>«codelet-signatures»=</em></p>
+<div class="sourceCode" id="codelet-signatures"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="codelet-signatures-1" title="1">CodeletSignature <span class="op">=</span> namedtuple(</a>
+<a class="sourceLine" id="codelet-signatures-2" title="2">    <span class="st">&quot;CodeletSignature&quot;</span>, [<span class="st">&quot;return_type&quot;</span>, <span class="st">&quot;arg_types&quot;</span>])</a>
+<a class="sourceLine" id="codelet-signatures-3" title="3"></a>
+<a class="sourceLine" id="codelet-signatures-4" title="4">codelet_signatures <span class="op">=</span> {</a>
+<a class="sourceLine" id="codelet-signatures-5" title="5">    <span class="st">&quot;twiddle&quot;</span>: CodeletSignature(</a>
+<a class="sourceLine" id="codelet-signatures-6" title="6">        <span class="va">None</span>, [c_void_p, c_void_p, c_void_p, c_ssize_t,</a>
+<a class="sourceLine" id="codelet-signatures-7" title="7">               c_ssize_t, c_ssize_t, c_ssize_t]),</a>
+<a class="sourceLine" id="codelet-signatures-8" title="8">    <span class="st">&quot;notw&quot;</span>:    CodeletSignature(</a>
+<a class="sourceLine" id="codelet-signatures-9" title="9">        <span class="va">None</span>, [c_void_p, c_void_p, c_void_p, c_void_p,</a>
+<a class="sourceLine" id="codelet-signatures-10" title="10">               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])</a>
+<a class="sourceLine" id="codelet-signatures-11" title="11">}</a></code></pre></div>
+<h3 id="loading-a-codelet">Loading a codelet</h3>
+<p><em>«load-notw-codelet»=</em></p>
+<div class="sourceCode" id="load-notw-codelet"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="load-notw-codelet-1" title="1"><span class="kw">def</span> load_notw_codelet(shared_object, function_name, dtype, radix):</a>
+<a class="sourceLine" id="load-notw-codelet-2" title="2">    signature <span class="op">=</span> codelet_signatures[<span class="st">&quot;notw&quot;</span>]</a>
+<a class="sourceLine" id="load-notw-codelet-3" title="3">    <span class="op">&lt;&lt;</span>load<span class="op">-</span>function<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="load-notw-codelet-4" title="4">    <span class="op">&lt;&lt;</span>make<span class="op">-</span>wrapper<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="load-notw-codelet-5" title="5">    <span class="cf">return</span> fft_notw</a></code></pre></div>
+<p>First we load the <code>.so</code> file</p>
+<p><em>«load-function»=</em></p>
+<div class="sourceCode" id="load-function"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="load-function-1" title="1">lib <span class="op">=</span> cdll.LoadLibrary(shared_object)</a>
+<a class="sourceLine" id="load-function-2" title="2">fun <span class="op">=</span> <span class="bu">getattr</span>(lib, function_name)</a>
+<a class="sourceLine" id="load-function-3" title="3">fun.argtypes <span class="op">=</span> signature.arg_types</a>
+<a class="sourceLine" id="load-function-4" title="4">dtype <span class="op">=</span> np.dtype(dtype)</a></code></pre></div>
+<p>Using the <code>notw</code> signature we can implement a wrapper for NumPy arrays</p>
+<p><em>«input-strides»=</em></p>
+<div class="sourceCode" id="input-strides"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="input-strides-1" title="1">float_size <span class="op">=</span> dtype.itemsize</a>
+<a class="sourceLine" id="input-strides-2" title="2">input_strides <span class="op">=</span> [s <span class="op">//</span> float_size <span class="cf">for</span> s <span class="kw">in</span> input_array.strides]</a>
+<a class="sourceLine" id="input-strides-3" title="3"><span class="cf">if</span> input_array.ndim <span class="op">==</span> <span class="dv">1</span>:</a>
+<a class="sourceLine" id="input-strides-4" title="4">    n <span class="op">=</span> <span class="dv">1</span></a>
+<a class="sourceLine" id="input-strides-5" title="5"><span class="cf">else</span>:</a>
+<a class="sourceLine" id="input-strides-6" title="6">    n <span class="op">=</span> input_array.shape[<span class="dv">0</span>]</a></code></pre></div>
+<p><em>«make-wrapper»=</em></p>
+<div class="sourceCode" id="make-wrapper"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="make-wrapper-1" title="1"><span class="kw">def</span> fft_notw(input_array, output_array):</a>
+<a class="sourceLine" id="make-wrapper-2" title="2">    <span class="op">&lt;&lt;</span>notw<span class="op">-</span>assertions<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="make-wrapper-3" title="3">    <span class="op">&lt;&lt;</span><span class="bu">input</span><span class="op">-</span>strides<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="make-wrapper-4" title="4">    output_strides <span class="op">=</span> [s <span class="op">//</span> float_size <span class="cf">for</span> s <span class="kw">in</span> output_array.strides]</a>
+<a class="sourceLine" id="make-wrapper-5" title="5"></a>
+<a class="sourceLine" id="make-wrapper-6" title="6">    fun(input_array.ctypes.data, input_array.ctypes.data <span class="op">+</span> float_size,</a>
+<a class="sourceLine" id="make-wrapper-7" title="7">        output_array.ctypes.data, output_array.ctypes.data <span class="op">+</span> float_size,</a>
+<a class="sourceLine" id="make-wrapper-8" title="8">        input_strides[<span class="op">-</span><span class="dv">1</span>], output_strides[<span class="op">-</span><span class="dv">1</span>], n,</a>
+<a class="sourceLine" id="make-wrapper-9" title="9">        input_strides[<span class="dv">0</span>], output_strides[<span class="dv">0</span>])</a></code></pre></div>
+<p>The codelet implements a loop, computing <code>n</code> FFTs of a given radix. When we pass a NumPy array, we assume that the last axis is the radix of the FFT and the first axis (largest stride in C-type array ordering) has arbitrary size.</p>
+<p>To guard against errors we have to make some assertions. These could be disabled if performance becomes an issue, but I don’t think this code will ever be used in that way.</p>
+<p><em>«notw-assertions»=</em></p>
+<div class="sourceCode" id="notw-assertions"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="notw-assertions-1" title="1"><span class="cf">assert</span>(input_array.shape <span class="op">==</span> output_array.shape)</a>
+<a class="sourceLine" id="notw-assertions-2" title="2"><span class="cf">if</span> dtype <span class="op">==</span> <span class="st">&#39;float32&#39;</span>:</a>
+<a class="sourceLine" id="notw-assertions-3" title="3">    <span class="cf">assert</span>(input_array.dtype <span class="op">==</span> <span class="st">&#39;complex64&#39;</span>)</a>
+<a class="sourceLine" id="notw-assertions-4" title="4">    <span class="cf">assert</span>(output_array.dtype <span class="op">==</span> <span class="st">&#39;complex64&#39;</span>)</a>
+<a class="sourceLine" id="notw-assertions-5" title="5"><span class="cf">if</span> dtype <span class="op">==</span> <span class="st">&#39;float64&#39;</span>:</a>
+<a class="sourceLine" id="notw-assertions-6" title="6">    <span class="cf">assert</span>(input_array.dtype <span class="op">==</span> <span class="st">&#39;complex128&#39;</span>)</a>
+<a class="sourceLine" id="notw-assertions-7" title="7">    <span class="cf">assert</span>(output_array.dtype <span class="op">==</span> <span class="st">&#39;complex128&#39;</span>)</a></code></pre></div>
+<p><em>«shape-assertions»=</em></p>
+<div class="sourceCode" id="shape-assertions"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="shape-assertions-1" title="1"><span class="cf">if</span> input_array.ndim <span class="op">==</span> <span class="dv">1</span>:</a>
+<a class="sourceLine" id="shape-assertions-2" title="2">    <span class="cf">assert</span>(input_array.size <span class="op">==</span> radix)</a>
+<a class="sourceLine" id="shape-assertions-3" title="3"><span class="cf">elif</span> input_array.ndim <span class="op">==</span> <span class="dv">2</span>:</a>
+<a class="sourceLine" id="shape-assertions-4" title="4">    <span class="cf">assert</span>(input_array.shape[<span class="dv">1</span>] <span class="op">==</span> radix)</a>
+<a class="sourceLine" id="shape-assertions-5" title="5"><span class="cf">else</span>:</a>
+<a class="sourceLine" id="shape-assertions-6" title="6">    <span class="cf">raise</span> <span class="pp">ValueError</span>(<span class="st">&quot;Expecting array of dimension 1 or 2.&quot;</span>)</a></code></pre></div>
+<h3 id="main-body">Main body</h3>
+<p><em>«run-main»=</em></p>
+<div class="sourceCode" id="run-main"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="run-main-1" title="1">fft7 <span class="op">=</span> load_notw_codelet(<span class="st">&quot;build/notw-7.gen.so&quot;</span>, <span class="st">&quot;fft&quot;</span>, <span class="st">&quot;float32&quot;</span>, <span class="dv">7</span>)</a>
+<a class="sourceLine" id="run-main-2" title="2">x <span class="op">=</span> np.arange(<span class="dv">7</span>, dtype<span class="op">=</span><span class="st">&#39;complex64&#39;</span>)</a>
+<a class="sourceLine" id="run-main-3" title="3">y <span class="op">=</span> np.zeros_like(x)</a>
+<a class="sourceLine" id="run-main-4" title="4">fft7(x, y)</a>
+<a class="sourceLine" id="run-main-5" title="5"><span class="bu">print</span>(y)</a>
+<a class="sourceLine" id="run-main-6" title="6"><span class="bu">print</span>(np.fft.fft(x))</a></code></pre></div>
+<h2 id="building-codelets-from-python">Building codelets from Python</h2>
+<p>To generate and compile codelets we build a little pipeline using Noodles. This way, shared object files are created for each codelet. Results are cached, so that <code>.so</code> files are reused later.</p>
+<p>We will build codelets on the fly. First, we need to call the codelet generator. The call to GenFFT is wrapped in a function that forwards its arguments as command-line arguments.</p>
+<p><em>«codelet-generator»=</em></p>
+<div class="sourceCode" id="codelet-generator"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="codelet-generator-1" title="1"><span class="at">@noodles.schedule</span>(store<span class="op">=</span><span class="va">True</span>)</a>
+<a class="sourceLine" id="codelet-generator-2" title="2"><span class="kw">def</span> generate_codelet(</a>
+<a class="sourceLine" id="codelet-generator-3" title="3">        config, variant, <span class="op">*</span>,</a>
+<a class="sourceLine" id="codelet-generator-4" title="4">        n, compact<span class="op">=</span><span class="va">True</span>, standalone<span class="op">=</span><span class="va">True</span>,</a>
+<a class="sourceLine" id="codelet-generator-5" title="5">        <span class="op">**</span>kwargs):</a>
+<a class="sourceLine" id="codelet-generator-6" title="6">    <span class="co">&quot;&quot;&quot;Generate a codelet using one of the FFTW3 codelet generators.</span></a>
+<a class="sourceLine" id="codelet-generator-7" title="7"></a>
+<a class="sourceLine" id="codelet-generator-8" title="8"><span class="co">    :param config: Configuration, see `default_config`</span></a>
+<a class="sourceLine" id="codelet-generator-9" title="9"><span class="co">    :type config: `dict`</span></a>
+<a class="sourceLine" id="codelet-generator-10" title="10"><span class="co">    :param variant: &quot;notw&quot; or &quot;twiddle&quot;</span></a>
+<a class="sourceLine" id="codelet-generator-11" title="11"><span class="co">    :type variant: `str`</span></a>
+<a class="sourceLine" id="codelet-generator-12" title="12"><span class="co">    :returns: code generated by the `genfft` program</span></a>
+<a class="sourceLine" id="codelet-generator-13" title="13"><span class="co">    :rtype: `str`</span></a>
+<a class="sourceLine" id="codelet-generator-14" title="14"></a>
+<a class="sourceLine" id="codelet-generator-15" title="15"><span class="co">    All other arguments are passed on to `genfft`. If the argument value has</span></a>
+<a class="sourceLine" id="codelet-generator-16" title="16"><span class="co">    type `bool`, it is passed as a flag, otherwise the value is converted to</span></a>
+<a class="sourceLine" id="codelet-generator-17" title="17"><span class="co">    a string and passed as argument.</span></a>
+<a class="sourceLine" id="codelet-generator-18" title="18"></a>
+<a class="sourceLine" id="codelet-generator-19" title="19"><span class="co">    :param n: FFT radix</span></a>
+<a class="sourceLine" id="codelet-generator-20" title="20"><span class="co">    :param compact: (flag) group variable declarations</span></a>
+<a class="sourceLine" id="codelet-generator-21" title="21"><span class="co">    :param standalone: (flag) don&#39;t include FFTW3 boilerplate</span></a>
+<a class="sourceLine" id="codelet-generator-22" title="22"><span class="co">    &quot;&quot;&quot;</span></a>
+<a class="sourceLine" id="codelet-generator-23" title="23">    kwargs[<span class="st">&quot;n&quot;</span>] <span class="op">=</span> n</a>
+<a class="sourceLine" id="codelet-generator-24" title="24">    kwargs[<span class="st">&quot;compact&quot;</span>] <span class="op">=</span> compact</a>
+<a class="sourceLine" id="codelet-generator-25" title="25">    kwargs[<span class="st">&quot;standalone&quot;</span>] <span class="op">=</span> standalone</a>
+<a class="sourceLine" id="codelet-generator-26" title="26"></a>
+<a class="sourceLine" id="codelet-generator-27" title="27">    <span class="kw">def</span> make_arg(name, value):</a>
+<a class="sourceLine" id="codelet-generator-28" title="28">        <span class="cf">if</span> <span class="bu">isinstance</span>(value, <span class="bu">bool</span>):</a>
+<a class="sourceLine" id="codelet-generator-29" title="29">            <span class="cf">if</span> value:</a>
+<a class="sourceLine" id="codelet-generator-30" title="30">                <span class="cf">return</span> [<span class="st">&quot;-&quot;</span> <span class="op">+</span> name]</a>
+<a class="sourceLine" id="codelet-generator-31" title="31">            <span class="cf">else</span>:</a>
+<a class="sourceLine" id="codelet-generator-32" title="32">                <span class="cf">return</span> []</a>
+<a class="sourceLine" id="codelet-generator-33" title="33">        <span class="cf">else</span>:</a>
+<a class="sourceLine" id="codelet-generator-34" title="34">            <span class="cf">return</span> [<span class="st">&quot;-&quot;</span> <span class="op">+</span> name, <span class="bu">str</span>(value)]</a>
+<a class="sourceLine" id="codelet-generator-35" title="35"></a>
+<a class="sourceLine" id="codelet-generator-36" title="36">    exe <span class="op">=</span> Path(config[<span class="st">&quot;generator_path&quot;</span>]) <span class="op">\</span></a>
+<a class="sourceLine" id="codelet-generator-37" title="37">        <span class="op">/</span> config[<span class="st">&quot;generator_name&quot;</span>].<span class="bu">format</span>(variant<span class="op">=</span>variant)</a>
+<a class="sourceLine" id="codelet-generator-38" title="38">    command <span class="op">=</span> <span class="bu">sum</span>(<span class="bu">map</span>(make_arg, kwargs.keys(), kwargs.values()), [<span class="bu">str</span>(exe)])</a>
+<a class="sourceLine" id="codelet-generator-39" title="39">    result <span class="op">=</span> subprocess.run(</a>
+<a class="sourceLine" id="codelet-generator-40" title="40">        command, check<span class="op">=</span><span class="va">True</span>, text<span class="op">=</span><span class="va">True</span>, capture_output<span class="op">=</span><span class="va">True</span>)</a>
+<a class="sourceLine" id="codelet-generator-41" title="41">    <span class="cf">return</span> result.stdout</a></code></pre></div>
+<p>After the code is generated, we need to change the <code>void fft(...)</code> function declaration into a <code>extern &quot;C&quot; void fft(...)</code>.</p>
+<p><em>«codelet-extern-c»=</em></p>
+<div class="sourceCode" id="codelet-extern-c"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="codelet-extern-c-1" title="1"><span class="at">@noodles.schedule</span></a>
+<a class="sourceLine" id="codelet-extern-c-2" title="2"><span class="kw">def</span> declare_extern_c(source):</a>
+<a class="sourceLine" id="codelet-extern-c-3" title="3">    <span class="co">&quot;&quot;&quot;Change the function declaration to extern &quot;C&quot;.</span></a>
+<a class="sourceLine" id="codelet-extern-c-4" title="4"></a>
+<a class="sourceLine" id="codelet-extern-c-5" title="5"><span class="co">    :param source: C code</span></a>
+<a class="sourceLine" id="codelet-extern-c-6" title="6"><span class="co">    :type source: `str`</span></a>
+<a class="sourceLine" id="codelet-extern-c-7" title="7"><span class="co">    :returns: modified C code</span></a>
+<a class="sourceLine" id="codelet-extern-c-8" title="8"><span class="co">    :rtype: `str`</span></a>
+<a class="sourceLine" id="codelet-extern-c-9" title="9"><span class="co">    &quot;&quot;&quot;</span></a>
+<a class="sourceLine" id="codelet-extern-c-10" title="10">    <span class="cf">return</span> <span class="st">&quot;</span><span class="ch">\n</span><span class="st">&quot;</span>.join(re.sub(<span class="st">&quot;^void&quot;</span>, <span class="st">&quot;extern </span><span class="ch">\&quot;</span><span class="st">C</span><span class="ch">\&quot;</span><span class="st"> void&quot;</span>, line)</a>
+<a class="sourceLine" id="codelet-extern-c-11" title="11">                     <span class="cf">for</span> line <span class="kw">in</span> source.splitlines())</a></code></pre></div>
+<p>In case we need to inspect the source code, it is nice to have the code indented properly:</p>
+<p><em>«codelet-indent»=</em></p>
+<div class="sourceCode" id="codelet-indent"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="codelet-indent-1" title="1"><span class="at">@noodles.schedule</span></a>
+<a class="sourceLine" id="codelet-indent-2" title="2"><span class="kw">def</span> indent_code(source):</a>
+<a class="sourceLine" id="codelet-indent-3" title="3">    <span class="co">&quot;&quot;&quot;Call the `indent` utility to pretty-print C-code.</span></a>
+<a class="sourceLine" id="codelet-indent-4" title="4"></a>
+<a class="sourceLine" id="codelet-indent-5" title="5"><span class="co">    :param source: C code</span></a>
+<a class="sourceLine" id="codelet-indent-6" title="6"><span class="co">    :type source: `str`</span></a>
+<a class="sourceLine" id="codelet-indent-7" title="7"><span class="co">    :returns: indented C code</span></a>
+<a class="sourceLine" id="codelet-indent-8" title="8"><span class="co">    :rtype: `str`</span></a>
+<a class="sourceLine" id="codelet-indent-9" title="9"><span class="co">    &quot;&quot;&quot;</span></a>
+<a class="sourceLine" id="codelet-indent-10" title="10">    result <span class="op">=</span> subprocess.run(</a>
+<a class="sourceLine" id="codelet-indent-11" title="11">        [<span class="st">&quot;indent&quot;</span>, <span class="st">&quot;-nut&quot;</span>], check<span class="op">=</span><span class="va">True</span>, text<span class="op">=</span><span class="va">True</span>, <span class="bu">input</span><span class="op">=</span>source,</a>
+<a class="sourceLine" id="codelet-indent-12" title="12">        capture_output<span class="op">=</span><span class="va">True</span>)</a>
+<a class="sourceLine" id="codelet-indent-13" title="13">    <span class="cf">return</span> result.stdout</a></code></pre></div>
+<p><em>«codelet-build-config»=</em></p>
+<div class="sourceCode" id="codelet-build-config"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="codelet-build-config-1" title="1">default_config <span class="op">=</span> {</a>
+<a class="sourceLine" id="codelet-build-config-2" title="2">    <span class="st">&quot;compiler&quot;</span>:       <span class="st">&quot;g++&quot;</span>,</a>
+<a class="sourceLine" id="codelet-build-config-3" title="3">    <span class="st">&quot;compile_args&quot;</span>:   [<span class="st">&quot;-x&quot;</span>, <span class="st">&quot;c++&quot;</span>, <span class="st">&quot;-O3&quot;</span>, <span class="st">&quot;-include&quot;</span>, <span class="st">&quot;codelet.hh&quot;</span>, <span class="st">&quot;-shared&quot;</span>],</a>
+<a class="sourceLine" id="codelet-build-config-4" title="4">    <span class="st">&quot;build_path&quot;</span>:     <span class="st">&quot;lib&quot;</span>,</a>
+<a class="sourceLine" id="codelet-build-config-5" title="5">    <span class="st">&quot;generator_path&quot;</span>: <span class="st">&quot;../genfft&quot;</span>,</a>
+<a class="sourceLine" id="codelet-build-config-6" title="6">    <span class="st">&quot;generator_name&quot;</span>: <span class="st">&quot;gen_</span><span class="sc">{variant}</span><span class="st">.native&quot;</span></a>
+<a class="sourceLine" id="codelet-build-config-7" title="7">}</a>
+<a class="sourceLine" id="codelet-build-config-8" title="8"></a>
+<a class="sourceLine" id="codelet-build-config-9" title="9"><span class="kw">def</span> compile_command(config, target):</a>
+<a class="sourceLine" id="codelet-build-config-10" title="10">    <span class="co">&quot;&quot;&quot;Generate compiler command.</span></a>
+<a class="sourceLine" id="codelet-build-config-11" title="11"></a>
+<a class="sourceLine" id="codelet-build-config-12" title="12"><span class="co">    :param config: Configuration, see `default_config`</span></a>
+<a class="sourceLine" id="codelet-build-config-13" title="13"><span class="co">    :type config: `dict`</span></a>
+<a class="sourceLine" id="codelet-build-config-14" title="14"><span class="co">    :param target: Path to target</span></a>
+<a class="sourceLine" id="codelet-build-config-15" title="15"><span class="co">    :type target: `str` or `Path`</span></a>
+<a class="sourceLine" id="codelet-build-config-16" title="16"><span class="co">    :returns: command suitable for `subprocess.run`</span></a>
+<a class="sourceLine" id="codelet-build-config-17" title="17"><span class="co">    :rtype: list of `str`</span></a>
+<a class="sourceLine" id="codelet-build-config-18" title="18"><span class="co">    &quot;&quot;&quot;</span></a>
+<a class="sourceLine" id="codelet-build-config-19" title="19">    <span class="cf">return</span> [config[<span class="st">&quot;compiler&quot;</span>]] <span class="op">+</span> config[<span class="st">&quot;compile_args&quot;</span>] <span class="op">\</span></a>
+<a class="sourceLine" id="codelet-build-config-20" title="20">        <span class="op">+</span> [<span class="st">&quot;-o&quot;</span>, <span class="bu">str</span>(target), <span class="st">&quot;-&quot;</span>]</a></code></pre></div>
+<p>The code is built using the given configuration. A shared object file is created with a random name.</p>
+<p><em>«codelet-build»=</em></p>
+<div class="sourceCode" id="codelet-build"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="codelet-build-1" title="1"><span class="at">@noodles.schedule</span>(store<span class="op">=</span><span class="va">True</span>)</a>
+<a class="sourceLine" id="codelet-build-2" title="2"><span class="kw">def</span> build_shared_object(config, source):</a>
+<a class="sourceLine" id="codelet-build-3" title="3">    <span class="co">&quot;&quot;&quot;Compile a C source into a shared object.&quot;&quot;&quot;</span></a>
+<a class="sourceLine" id="codelet-build-4" title="4">    target <span class="op">=</span> Path(config[<span class="st">&quot;build_path&quot;</span>]) <span class="op">/</span> (uuid.uuid4().<span class="bu">hex</span> <span class="op">+</span> <span class="st">&quot;.so&quot;</span>)</a>
+<a class="sourceLine" id="codelet-build-5" title="5">    target.parent.mkdir(exist_ok<span class="op">=</span><span class="va">True</span>)</a>
+<a class="sourceLine" id="codelet-build-6" title="6">    subprocess.run(</a>
+<a class="sourceLine" id="codelet-build-7" title="7">        compile_command(config, target),</a>
+<a class="sourceLine" id="codelet-build-8" title="8">        check<span class="op">=</span><span class="va">True</span>, text<span class="op">=</span><span class="va">True</span>, <span class="bu">input</span><span class="op">=</span>source)</a>
+<a class="sourceLine" id="codelet-build-9" title="9">    <span class="cf">return</span> Path(target)</a></code></pre></div>
+<p>Once we created a pipeline for building a codelet, we need to run it, in this case using a multi-threaded runner with caching enabled. Also, we need to specify how to serialise objects.</p>
+<p><em>«noodles-run»=</em></p>
+<div class="sourceCode" id="noodles-run"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="noodles-run-1" title="1"><span class="im">from</span> noodles.run.threading.sqlite3 <span class="im">import</span> run_parallel</a>
+<a class="sourceLine" id="noodles-run-2" title="2"><span class="im">from</span> noodles <span class="im">import</span> serial</a>
+<a class="sourceLine" id="noodles-run-3" title="3"></a>
+<a class="sourceLine" id="noodles-run-4" title="4"><span class="kw">def</span> run(wf):</a>
+<a class="sourceLine" id="noodles-run-5" title="5">    <span class="cf">return</span> run_parallel(</a>
+<a class="sourceLine" id="noodles-run-6" title="6">        wf, registry<span class="op">=</span>serial.base, n_threads<span class="op">=</span><span class="dv">4</span>,</a>
+<a class="sourceLine" id="noodles-run-7" title="7">        db_file<span class="op">=</span><span class="st">&quot;lib/db&quot;</span>, echo_log<span class="op">=</span><span class="va">False</span>)</a></code></pre></div>
+<h4 id="synthesis">Synthesis</h4>
+<p>To wrap up. We can now build a codelet, and we already know howto wrap a codelet into a Python function. We can now combine those and generate any codelet function on the fly.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode py"><code class="sourceCode python"><a class="sourceLine" id="cb6-1" title="1"><span class="im">import</span> subprocess</a>
+<a class="sourceLine" id="cb6-2" title="2"><span class="im">import</span> re</a>
+<a class="sourceLine" id="cb6-3" title="3"><span class="im">import</span> uuid</a>
+<a class="sourceLine" id="cb6-4" title="4"></a>
+<a class="sourceLine" id="cb6-5" title="5"><span class="im">import</span> numpy <span class="im">as</span> np</a>
+<a class="sourceLine" id="cb6-6" title="6"></a>
+<a class="sourceLine" id="cb6-7" title="7"><span class="im">from</span> pathlib <span class="im">import</span> (Path)</a>
+<a class="sourceLine" id="cb6-8" title="8"><span class="im">from</span> ctypes <span class="im">import</span> (cdll, c_void_p, c_ssize_t)</a>
+<a class="sourceLine" id="cb6-9" title="9"><span class="im">from</span> collections <span class="im">import</span> (namedtuple)</a>
+<a class="sourceLine" id="cb6-10" title="10"></a>
+<a class="sourceLine" id="cb6-11" title="11"><span class="im">import</span> noodles</a>
+<a class="sourceLine" id="cb6-12" title="12"></a>
+<a class="sourceLine" id="cb6-13" title="13"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>build<span class="op">-</span>config<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb6-14" title="14"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>signatures<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb6-15" title="15"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>generator<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb6-16" title="16"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>extern<span class="op">-</span>c<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb6-17" title="17"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>indent<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb6-18" title="18"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>build<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb6-19" title="19"></a>
+<a class="sourceLine" id="cb6-20" title="20"><span class="op">&lt;&lt;</span>load<span class="op">-</span>notw<span class="op">-</span>codelet<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb6-21" title="21"><span class="op">&lt;&lt;</span>load<span class="op">-</span>twiddle<span class="op">-</span>codelet<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb6-22" title="22"></a>
+<a class="sourceLine" id="cb6-23" title="23"><span class="op">&lt;&lt;</span>noodles<span class="op">-</span>run<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb6-24" title="24"></a>
+<a class="sourceLine" id="cb6-25" title="25"><span class="kw">def</span> generate_fft(config, variant, <span class="op">**</span>kwargs):</a>
+<a class="sourceLine" id="cb6-26" title="26">    kwargs[<span class="st">&quot;name&quot;</span>] <span class="op">=</span> <span class="st">&quot;fft&quot;</span></a>
+<a class="sourceLine" id="cb6-27" title="27">    code_p <span class="op">=</span> indent_code(</a>
+<a class="sourceLine" id="cb6-28" title="28">        declare_extern_c(</a>
+<a class="sourceLine" id="cb6-29" title="29">            generate_codelet(config, variant, <span class="op">**</span>kwargs)))</a>
+<a class="sourceLine" id="cb6-30" title="30">    so_p <span class="op">=</span> build_shared_object(config, code_p)</a>
+<a class="sourceLine" id="cb6-31" title="31">    shared_object <span class="op">=</span> run(so_p)</a>
+<a class="sourceLine" id="cb6-32" title="32"></a>
+<a class="sourceLine" id="cb6-33" title="33">    <span class="cf">if</span> variant <span class="op">==</span> <span class="st">&quot;notw&quot;</span>:</a>
+<a class="sourceLine" id="cb6-34" title="34">        <span class="cf">return</span> load_notw_codelet(</a>
+<a class="sourceLine" id="cb6-35" title="35">            shared_object, kwargs[<span class="st">&quot;name&quot;</span>], <span class="st">&quot;float32&quot;</span>, kwargs[<span class="st">&quot;n&quot;</span>])</a>
+<a class="sourceLine" id="cb6-36" title="36">    <span class="cf">elif</span> variant <span class="op">==</span> <span class="st">&quot;twiddle&quot;</span>:</a>
+<a class="sourceLine" id="cb6-37" title="37">        <span class="cf">return</span> load_twiddle_codelet(</a>
+<a class="sourceLine" id="cb6-38" title="38">            shared_object, kwargs[<span class="st">&quot;name&quot;</span>], <span class="st">&quot;float32&quot;</span>, kwargs[<span class="st">&quot;n&quot;</span>])</a>
+<a class="sourceLine" id="cb6-39" title="39">    <span class="cf">else</span>:</a>
+<a class="sourceLine" id="cb6-40" title="40">        <span class="cf">raise</span> <span class="pp">ValueError</span>(<span class="st">&quot;Unknown FFT variant: &quot;</span> <span class="op">+</span> variant)</a></code></pre></div>
+<h2 id="cooley-tukey-algorithm">Cooley-Tukey algorithm</h2>
+<h3 id="the-twiddle-codelet">The twiddle codelet</h3>
+<p><em>«load-twiddle-codelet»=</em></p>
+<div class="sourceCode" id="load-twiddle-codelet"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="load-twiddle-codelet-1" title="1"><span class="kw">def</span> load_twiddle_codelet(shared_object, function_name, dtype, radix):</a>
+<a class="sourceLine" id="load-twiddle-codelet-2" title="2">    signature <span class="op">=</span> codelet_signatures[<span class="st">&quot;twiddle&quot;</span>]</a>
+<a class="sourceLine" id="load-twiddle-codelet-3" title="3">    <span class="op">&lt;&lt;</span>load<span class="op">-</span>function<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="load-twiddle-codelet-4" title="4"></a>
+<a class="sourceLine" id="load-twiddle-codelet-5" title="5">    <span class="kw">def</span> fft_twiddle(input_array, twiddle_factors):</a>
+<a class="sourceLine" id="load-twiddle-codelet-6" title="6">        <span class="cf">if</span> dtype <span class="op">==</span> <span class="st">&#39;float32&#39;</span>:</a>
+<a class="sourceLine" id="load-twiddle-codelet-7" title="7">            <span class="cf">assert</span>(input_array.dtype <span class="op">==</span> <span class="st">&#39;complex64&#39;</span>)</a>
+<a class="sourceLine" id="load-twiddle-codelet-8" title="8">        <span class="cf">if</span> dtype <span class="op">==</span> <span class="st">&#39;float64&#39;</span>:</a>
+<a class="sourceLine" id="load-twiddle-codelet-9" title="9">            <span class="cf">assert</span>(input_array.dtype <span class="op">==</span> <span class="st">&#39;complex128&#39;</span>)</a>
+<a class="sourceLine" id="load-twiddle-codelet-10" title="10">        <span class="op">&lt;&lt;</span>shape<span class="op">-</span>assertions<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="load-twiddle-codelet-11" title="11"></a>
+<a class="sourceLine" id="load-twiddle-codelet-12" title="12">        n_w <span class="op">=</span> radix <span class="op">-</span> <span class="dv">1</span></a>
+<a class="sourceLine" id="load-twiddle-codelet-13" title="13">        <span class="cf">assert</span>(input_array.dtype <span class="op">==</span> twiddle_factors.dtype)</a>
+<a class="sourceLine" id="load-twiddle-codelet-14" title="14">        <span class="cf">if</span> input_array.ndim <span class="op">==</span> <span class="dv">1</span>:</a>
+<a class="sourceLine" id="load-twiddle-codelet-15" title="15">            <span class="cf">assert</span>(twiddle_factors.shape <span class="op">==</span> (n_w,))</a>
+<a class="sourceLine" id="load-twiddle-codelet-16" title="16">        <span class="cf">else</span>:</a>
+<a class="sourceLine" id="load-twiddle-codelet-17" title="17">            <span class="cf">assert</span>(twiddle_factors.shape <span class="op">==</span> (input_array.shape[<span class="dv">0</span>], n_w))</a>
+<a class="sourceLine" id="load-twiddle-codelet-18" title="18"></a>
+<a class="sourceLine" id="load-twiddle-codelet-19" title="19">        <span class="op">&lt;&lt;</span><span class="bu">input</span><span class="op">-</span>strides<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="load-twiddle-codelet-20" title="20">        fun(input_array.ctypes.data, input_array.ctypes.data <span class="op">+</span> float_size,</a>
+<a class="sourceLine" id="load-twiddle-codelet-21" title="21">            twiddle_factors.ctypes.data,</a>
+<a class="sourceLine" id="load-twiddle-codelet-22" title="22">            input_strides[<span class="op">-</span><span class="dv">1</span>], <span class="dv">0</span>, n, input_strides[<span class="dv">0</span>])</a>
+<a class="sourceLine" id="load-twiddle-codelet-23" title="23"></a>
+<a class="sourceLine" id="load-twiddle-codelet-24" title="24">    <span class="cf">return</span> fft_twiddle</a></code></pre></div>
+<h4 id="using-twiddles">Using twiddles</h4>
+<p>We know that the input values need to be multiplied with twiddle factors, but the twiddle for <span class="math inline">\(w_n^0\)</span> is always 1. This is why the <code>twiddle</code> codelet expects <code>n_w = radix - 1</code> number of complex twiddle factors. If we study the generated codelet carefully, we also find that the input values are multiplied by the complex conjugate of the given twiddle factors.</p>
+<h3 id="making-a-larger-transform">Making a larger transform</h3>
+<p>The basis of Cooley-Tukey algorithm is to split the computation of the full Fourier transform into two parts. Say the length of the array is <span class="math inline">\(r = nm\)</span>. We then first perform <span class="math inline">\(n\)</span> radix <span class="math inline">\(m\)</span> transforms, multiply the output by twiddle factors <span class="math inline">\(w_r^{kl}\)</span> and then do <span class="math inline">\(m\)</span> radix <span class="math inline">\(n\)</span> transforms. Here</p>
+<p><span class="math display">\[w_n = \exp\left(\frac{2\pi i}{n}\right).\]</span></p>
+<p>This is easily visualised by putting the values <span class="math inline">\(x_k\)</span> for <span class="math inline">\(k = 0 .. r\)</span> on a rectangular grid of size <span class="math inline">\(n \times m\)</span>.</p>
+<p><em>«twiddle-factors»=</em></p>
+<div class="sourceCode" id="twiddle-factors"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="twiddle-factors-1" title="1"><span class="kw">def</span> w(k, n):</a>
+<a class="sourceLine" id="twiddle-factors-2" title="2">    <span class="cf">return</span> np.exp(2j <span class="op">*</span> np.pi <span class="op">*</span> k <span class="op">/</span> n)</a>
+<a class="sourceLine" id="twiddle-factors-3" title="3"></a>
+<a class="sourceLine" id="twiddle-factors-4" title="4"><span class="kw">def</span> make_twiddle(n1, n2):</a>
+<a class="sourceLine" id="twiddle-factors-5" title="5">    I1 <span class="op">=</span> np.arange(n1)</a>
+<a class="sourceLine" id="twiddle-factors-6" title="6">    I2 <span class="op">=</span> np.arange(n2)</a>
+<a class="sourceLine" id="twiddle-factors-7" title="7">    <span class="cf">return</span> w(I1[:,<span class="va">None</span>] <span class="op">*</span> I2[<span class="va">None</span>,:], n1<span class="op">*</span>n2).astype(<span class="st">&#39;complex64&#39;</span>)</a></code></pre></div>
+<p>We can make use of the fact that in NumPy we can transpose and reshape arrays as much as we like, and the underlying data array is the same object by reference.</p>
+<p><em>«fft-two-factor»=</em></p>
+<div class="sourceCode" id="fft-two-factor"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="fft-two-factor-1" title="1"><span class="kw">def</span> fft_two_factor(config, n, m):</a>
+<a class="sourceLine" id="fft-two-factor-2" title="2">    fft_n <span class="op">=</span> generate_fft(config, <span class="st">&quot;notw&quot;</span>, n<span class="op">=</span>n)</a>
+<a class="sourceLine" id="fft-two-factor-3" title="3">    fft_m <span class="op">=</span> generate_fft(config, <span class="st">&quot;notw&quot;</span>, n<span class="op">=</span>m)</a>
+<a class="sourceLine" id="fft-two-factor-4" title="4">    W <span class="op">=</span> make_twiddle(m, n).conj()</a>
+<a class="sourceLine" id="fft-two-factor-5" title="5">    </a>
+<a class="sourceLine" id="fft-two-factor-6" title="6">    <span class="kw">def</span> fft(x):</a>
+<a class="sourceLine" id="fft-two-factor-7" title="7">        y <span class="op">=</span> np.zeros_like(x).reshape([m, n])</a>
+<a class="sourceLine" id="fft-two-factor-8" title="8">        z <span class="op">=</span> np.zeros_like(x)</a>
+<a class="sourceLine" id="fft-two-factor-9" title="9">        fft_n(x.reshape([n, m]).T, y)</a>
+<a class="sourceLine" id="fft-two-factor-10" title="10">        y <span class="op">*=</span> W</a>
+<a class="sourceLine" id="fft-two-factor-11" title="11">        fft_m(y.T, z.reshape([m, n]).T)</a>
+<a class="sourceLine" id="fft-two-factor-12" title="12">        <span class="cf">return</span> z</a>
+<a class="sourceLine" id="fft-two-factor-13" title="13">    </a>
+<a class="sourceLine" id="fft-two-factor-14" title="14">    <span class="cf">return</span> fft</a></code></pre></div>
+<h3 id="using-the-twiddle-codelet">Using the twiddle codelet</h3>
+<p>This referential quality to NumPy arrays can become tricky when we don’t actually want it. Since we don’t need the first column of the twiddle factor array, we can just leave it out, but then we need to copy the result, because the codelet expects a contiguous array. After this is done, the resulting code is much cleaner.</p>
+<p><em>«fft-two-factor-twiddle»=</em></p>
+<div class="sourceCode" id="fft-two-factor-twiddle"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="fft-two-factor-twiddle-1" title="1"><span class="kw">def</span> fft_two_factor_twiddle(config, n, m):</a>
+<a class="sourceLine" id="fft-two-factor-twiddle-2" title="2">    fft_n <span class="op">=</span> generate_fft(config, <span class="st">&quot;notw&quot;</span>, n<span class="op">=</span>n)</a>
+<a class="sourceLine" id="fft-two-factor-twiddle-3" title="3">    fft_m <span class="op">=</span> generate_fft(config, <span class="st">&quot;twiddle&quot;</span>, n<span class="op">=</span>m)</a>
+<a class="sourceLine" id="fft-two-factor-twiddle-4" title="4">    W <span class="op">=</span> make_twiddle(n, m)[:,<span class="dv">1</span>:].copy()</a>
+<a class="sourceLine" id="fft-two-factor-twiddle-5" title="5">    </a>
+<a class="sourceLine" id="fft-two-factor-twiddle-6" title="6">    <span class="kw">def</span> fft(x):</a>
+<a class="sourceLine" id="fft-two-factor-twiddle-7" title="7">        y <span class="op">=</span> np.zeros_like(x).reshape([m, n])</a>
+<a class="sourceLine" id="fft-two-factor-twiddle-8" title="8">        fft_n(x.reshape([n, m]).T, y)</a>
+<a class="sourceLine" id="fft-two-factor-twiddle-9" title="9">        fft_m(y.T, W)</a>
+<a class="sourceLine" id="fft-two-factor-twiddle-10" title="10">        <span class="cf">return</span> y.flatten()</a>
+<a class="sourceLine" id="fft-two-factor-twiddle-11" title="11">    </a>
+<a class="sourceLine" id="fft-two-factor-twiddle-12" title="12">    <span class="cf">return</span> fft</a></code></pre></div>
+<h3 id="module">Module</h3>
+<div class="sourceCode" id="cb7"><pre class="sourceCode py"><code class="sourceCode python"><a class="sourceLine" id="cb7-1" title="1"><span class="im">from</span> codelets <span class="im">import</span> (</a>
+<a class="sourceLine" id="cb7-2" title="2">    generate_fft, default_config)</a>
+<a class="sourceLine" id="cb7-3" title="3"><span class="im">import</span> numpy <span class="im">as</span> np</a>
+<a class="sourceLine" id="cb7-4" title="4"></a>
+<a class="sourceLine" id="cb7-5" title="5"><span class="op">&lt;&lt;</span>twiddle<span class="op">-</span>factors<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb7-6" title="6"><span class="op">&lt;&lt;</span>fft<span class="op">-</span>two<span class="op">-</span>factor<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb7-7" title="7"><span class="op">&lt;&lt;</span>fft<span class="op">-</span>two<span class="op">-</span>factor<span class="op">-</span>twiddle<span class="op">&gt;&gt;</span></a></code></pre></div>
+</body>
+</html>

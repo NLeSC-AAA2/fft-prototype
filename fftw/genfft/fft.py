@@ -1,19 +1,18 @@
-## ------ language="Python" file="fft.py"
+## ------ language="Python" file="genfft/fft.py"
 from codelets import (
     generate_fft, default_config)
 import numpy as np
 
-
+## ------ begin <<twiddle-factors>>[0]
 def w(k, n):
     return np.exp(2j * np.pi * k / n)
-
 
 def make_twiddle(n1, n2):
     I1 = np.arange(n1)
     I2 = np.arange(n2)
     return w(I1[:,None] * I2[None,:], n1*n2).astype('complex64')
-
-
+## ------ end
+## ------ begin <<fft-two-factor>>[0]
 def fft_two_factor(config, n, m):
     fft_n = generate_fft(config, "notw", n=n)
     fft_m = generate_fft(config, "notw", n=m)
@@ -28,8 +27,8 @@ def fft_two_factor(config, n, m):
         return z
     
     return fft
-
-
+## ------ end
+## ------ begin <<fft-two-factor-twiddle>>[0]
 def fft_two_factor_twiddle(config, n, m):
     fft_n = generate_fft(config, "notw", n=n)
     fft_m = generate_fft(config, "twiddle", n=m)
@@ -42,4 +41,5 @@ def fft_two_factor_twiddle(config, n, m):
         return y.flatten()
     
     return fft
+## ------ end
 ## ------ end

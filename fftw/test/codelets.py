@@ -1,17 +1,19 @@
-## ------ language="Python" file="test-codelets.py"
+## ------ language="Python" file="test/codelets.py"
 import numpy as np
 from ctypes import (cdll, c_void_p, c_ssize_t)
 from collections import (namedtuple)
 
 ## ------ begin <<codelet-signatures>>[0]
-CodeletSignature = namedtuple("CodeletSignature", ["return_type", "arg_types"])
+CodeletSignature = namedtuple(
+    "CodeletSignature", ["return_type", "arg_types"])
 
 codelet_signatures = {
     "twiddle": CodeletSignature(
-        None, [c_void_p, c_void_p, c_void_p, c_ssize_t, c_ssize_t, c_ssize_t]),
+        None, [c_void_p, c_void_p, c_void_p, c_ssize_t,
+               c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw":    CodeletSignature(
-        None, [c_void_p, c_void_p, c_void_p, c_void_p, c_ssize_t, c_ssize_t,
-               c_ssize_t, c_ssize_t, c_ssize_t])
+        None, [c_void_p, c_void_p, c_void_p, c_void_p,
+               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
 }
 ## ------ end
 ## ------ begin <<load-notw-codelet>>[0]
