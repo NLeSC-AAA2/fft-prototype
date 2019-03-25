@@ -14,24 +14,11 @@ import noodles
 ## ------ begin <<codelet-build-config>>[0]
 default_config = {
     "compiler":       "g++",
-    "compile_args":   ["-x", "c++", "-O3", "-include", "codelet.hh", "-shared"],
+    "compile_args":   ["-x", "c++", "-O3", "-include", "genfft/codelet.hh", "-shared"],
     "build_path":     "lib",
     "generator_path": "../genfft",
     "generator_name": "gen_{variant}.native"
 }
-
-def compile_command(config, target):
-    """Generate compiler command.
-
-    :param config: Configuration, see `default_config`
-    :type config: `dict`
-    :param target: Path to target
-    :type target: `str` or `Path`
-    :returns: command suitable for `subprocess.run`
-    :rtype: list of `str`
-    """
-    return [config["compiler"]] + config["compile_args"] \
-        + ["-o", str(target), "-"]
 ## ------ end
 ## ------ begin <<codelet-signatures>>[0]
 CodeletSignature = namedtuple(
@@ -116,6 +103,20 @@ def indent_code(source):
         ["indent", "-nut"], check=True, text=True, input=source,
         capture_output=True)
     return result.stdout
+## ------ end
+## ------ begin <<codelet-compile-command>>[0]
+def compile_command(config, target):
+    """Generate compiler command.
+
+    :param config: Configuration, see `default_config`
+    :type config: `dict`
+    :param target: Path to target
+    :type target: `str` or `Path`
+    :returns: command suitable for `subprocess.run`
+    :rtype: list of `str`
+    """
+    return [config["compiler"]] + config["compile_args"] \
+        + ["-o", str(target), "-"]
 ## ------ end
 ## ------ begin <<codelet-build>>[0]
 @noodles.schedule(store=True)

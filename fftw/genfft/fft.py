@@ -1,5 +1,5 @@
 ## ------ language="Python" file="genfft/fft.py"
-from codelets import (
+from .codelets import (
     generate_fft, default_config)
 import numpy as np
 
@@ -17,7 +17,7 @@ def fft_two_factor(config, n, m):
     fft_n = generate_fft(config, "notw", n=n)
     fft_m = generate_fft(config, "notw", n=m)
     W = make_twiddle(m, n).conj()
-    
+
     def fft(x):
         y = np.zeros_like(x).reshape([m, n])
         z = np.zeros_like(x)
@@ -25,7 +25,7 @@ def fft_two_factor(config, n, m):
         y *= W
         fft_m(y.T, z.reshape([m, n]).T)
         return z
-    
+
     return fft
 ## ------ end
 ## ------ begin <<fft-two-factor-twiddle>>[0]
@@ -33,13 +33,13 @@ def fft_two_factor_twiddle(config, n, m):
     fft_n = generate_fft(config, "notw", n=n)
     fft_m = generate_fft(config, "twiddle", n=m)
     W = make_twiddle(n, m)[:,1:].copy()
-    
+
     def fft(x):
         y = np.zeros_like(x).reshape([m, n])
         fft_n(x.reshape([n, m]).T, y)
         fft_m(y.T, W)
         return y.flatten()
-    
+
     return fft
 ## ------ end
 ## ------ end

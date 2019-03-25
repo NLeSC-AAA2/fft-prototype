@@ -1,8 +1,14 @@
 # Building codelets from Python
 
-To generate and compile codelets we build a little pipeline using Noodles. This way, shared object files are created for each codelet. Results are cached, so that `.so` files are reused later.
+To generate and compile codelets we build a little pipeline using [Noodles](http://noodles.rtfd.io). The pipeline creates a shared object file for each codelet. Results are cached, so that `.so` files are reused later.
 
-We will build codelets on the fly. First, we need to call the codelet generator. The call to GenFFT is wrapped in a function that forwards its arguments as command-line arguments.
+We will build codelets on the fly. First, we need to call the codelet generator. The call to GenFFT is wrapped in a function that forwards its arguments as command-line arguments, so `generate_codelet(config, "notw", n=4, sign=-1)` will result a command-line like
+
+```
+gen_notw.native -n 4 -sign -1 -compact -standalone
+```
+
+The `compact` and `standalone` flags are passed by default.
 
 ``` {.python #codelet-generator}
 @noodles.schedule(store=True)
@@ -64,7 +70,7 @@ def declare_extern_c(source):
                      for line in source.splitlines())
 ```
 
-In case we need to inspect the source code, it is nice to have the code indented properly:
+In case we need to inspect the source code, it is nice to have the code indented properly. The `-nut` command line argument ensures that indendation is done with spaces in stead of tabs.
 
 ``` {.python #codelet-indent}
 @noodles.schedule
@@ -82,15 +88,25 @@ def indent_code(source):
     return result.stdout
 ```
 
+On my system (Debian Buster/Linux + GCC 8.3) the following configuration works:
+
 ``` {.python #codelet-build-config}
 default_config = {
     "compiler":       "g++",
-    "compile_args":   ["-x", "c++", "-O3", "-include", "codelet.hh", "-shared"],
+    "compile_args":   ["-x", "c++", "-O3", "-include", "genfft/codelet.hh", "-shared"],
     "build_path":     "lib",
     "generator_path": "../genfft",
     "generator_name": "gen_{variant}.native"
 }
+```
 
+::: TODO :::
+Include GenFFT executables in Python library path, making this work self-contained.
+:::
+
+This tells GCC to compile the generated source, including the `codelet.hh` file for its type definitions. From this configuration we can build the compile command.
+
+``` {.python #codelet-compile-command}
 def compile_command(config, target):
     """Generate compiler command.
 
@@ -119,7 +135,7 @@ def build_shared_object(config, source):
     return Path(target)
 ```
 
-Once we created a pipeline for building a codelet, we need to run it, in this case using a multi-threaded runner with caching enabled. Also, we need to specify how to serialise objects.
+Once we created a pipeline for building a codelet, we need to run it, in this case using a multi-threaded runner with caching enabled. Also, we need to specify how to serialise objects. Since we only call functions with standard Python objects (strings and lists) `noodles.serial.base` suffices.
 
 ``` {.python #noodles-run}
 from noodles.run.threading.sqlite3 import run_parallel
@@ -153,6 +169,7 @@ import noodles
 <<codelet-generator>>
 <<codelet-extern-c>>
 <<codelet-indent>>
+<<codelet-compile-command>>
 <<codelet-build>>
 
 <<load-notw-codelet>>
@@ -177,5 +194,4 @@ def generate_fft(config, variant, **kwargs):
     else:
         raise ValueError("Unknown FFT variant: " + variant)
 ```
-
 
