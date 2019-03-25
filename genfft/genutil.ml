@@ -40,6 +40,14 @@ let locative_array_c n rarr iarr loc vs =
     (Variable.make_locative rloc klass rarr i vs,
      Variable.make_locative iloc klass iarr i vs))
 
+(* have real and complex in a single array *)
+let locative_array_z n carr loc vs =
+  array n (fun i ->
+    let klass = Unique.make () in
+    let (rloc, iloc) = loc i in
+    (Variable.make_locative rloc klass carr (2*i) vs,
+     Variable.make_locative iloc klass carr (2*i + 1) vs))
+    
 let locative_v_array_c veclen n rarr iarr loc vs = 
   array veclen (fun v ->
     array n (fun i -> 

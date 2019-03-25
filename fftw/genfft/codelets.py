@@ -31,6 +31,9 @@ codelet_signatures = {
     "notw":    CodeletSignature(
         None, [c_void_p, c_void_p, c_void_p, c_void_p,
                c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
+    "notw_complex": CodeletSignature(
+        None, [c_void_p, c_void_p,
+               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
 }
 ## ------ end
 ## ------ begin <<codelet-generator>>[0]
@@ -211,6 +214,43 @@ def load_twiddle_codelet(shared_object, function_name, dtype, radix):
             input_strides[-1], 0, n, input_strides[0])
 
     return fft_twiddle
+## ------ end
+## ------ begin <<load-notw-complex-codelet>>[0]
+def load_notw_complex_codelet(shared_object, function_name, dtype, radix):
+    signature = codelet_signatures["notw_complex"]
+    ## ------ begin <<load-function>>[0]
+    lib = cdll.LoadLibrary(shared_object)
+    fun = getattr(lib, function_name)
+    fun.argtypes = signature.arg_types
+    dtype = np.dtype(dtype)
+    ## ------ end
+    ## ------ begin <<make-notw-complex-wrapper>>[0]
+    def fft_notw(input_array, output_array):
+        ## ------ begin <<notw-assertions>>[0]
+        assert(input_array.shape == output_array.shape)
+        if dtype == 'float32':
+            assert(input_array.dtype == 'complex64')
+            assert(output_array.dtype == 'complex64')
+        if dtype == 'float64':
+            assert(input_array.dtype == 'complex128')
+            assert(output_array.dtype == 'complex128')
+        ## ------ end
+        ## ------ begin <<input-strides>>[0]
+        float_size = dtype.itemsize
+        input_strides = [s // float_size for s in input_array.strides]
+        if input_array.ndim == 1:
+            n = 1
+        else:
+            n = input_array.shape[0]
+        ## ------ end
+        output_strides = [s // float_size for s in output_array.strides]
+    
+        fun(input_array.ctypes.data, input_array.ctypes.data + float_size,
+            output_array.ctypes.data, output_array.ctypes.data + float_size,
+            input_strides[-1], output_strides[-1], n,
+            input_strides[0], output_strides[0])
+    ## ------ end
+    return fft_notw
 ## ------ end
 
 ## ------ begin <<noodles-run>>[0]

@@ -201,6 +201,9 @@ codelet_signatures = {
     "notw":    CodeletSignature(
         None, [c_void_p, c_void_p, c_void_p, c_void_p,
                c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
+    "notw_complex": CodeletSignature(
+        None, [c_void_p, c_void_p,
+               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
 }
 ```
 
@@ -267,6 +270,28 @@ elif input_array.ndim == 2:
     assert(input_array.shape[1] == radix)
 else:
     raise ValueError("Expecting array of dimension 1 or 2.")
+```
+
+## Notw-complex codelet
+
+``` {.python #load-notw-complex-codelet}
+def load_notw_complex_codelet(shared_object, function_name, dtype, radix):
+    signature = codelet_signatures["notw_complex"]
+    <<load-function>>
+    <<make-notw-complex-wrapper>>
+    return fft_notw
+```
+
+``` {.python #make-notw-complex-wrapper}
+def fft_notw(input_array, output_array):
+    <<notw-assertions>>
+    <<input-strides>>
+    output_strides = [s // float_size for s in output_array.strides]
+
+    fun(input_array.ctypes.data, input_array.ctypes.data + float_size,
+        output_array.ctypes.data, output_array.ctypes.data + float_size,
+        input_strides[-1], output_strides[-1], n,
+        input_strides[0], output_strides[0])
 ```
 
 ## Main body

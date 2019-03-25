@@ -166,9 +166,6 @@ if __name__ == "__main__":
 
 # Running an OpenCL codelet
 
-``` {.opencl file=genfft/codelet.clh}
-```
-
 ``` {.python file=genfft/opencl.py}
 import pyopencl as cl
 import os

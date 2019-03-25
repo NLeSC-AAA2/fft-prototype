@@ -174,6 +174,7 @@ import noodles
 
 <<load-notw-codelet>>
 <<load-twiddle-codelet>>
+<<load-notw-complex-codelet>>
 
 <<noodles-run>>
 
