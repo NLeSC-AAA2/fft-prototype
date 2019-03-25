@@ -200,7 +200,7 @@ codelet_signatures = {
                c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw":    CodeletSignature(
         None, [c_void_p, c_void_p, c_void_p, c_void_p,
-               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
+               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw_complex": CodeletSignature(
         None, [c_void_p, c_void_p,
                c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
@@ -288,9 +288,9 @@ def fft_notw(input_array, output_array):
     <<input-strides>>
     output_strides = [s // float_size for s in output_array.strides]
 
-    fun(input_array.ctypes.data, input_array.ctypes.data + float_size,
-        output_array.ctypes.data, output_array.ctypes.data + float_size,
-        input_strides[-1], output_strides[-1], n,
+    fun(input_array.ctypes.data,
+        output_array.ctypes.data,
+        input_strides[-1]//2, output_strides[-1]//2, n,
         input_strides[0], output_strides[0])
 ```
 

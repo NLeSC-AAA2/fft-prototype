@@ -30,7 +30,7 @@ codelet_signatures = {
                c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw":    CodeletSignature(
         None, [c_void_p, c_void_p, c_void_p, c_void_p,
-               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
+               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw_complex": CodeletSignature(
         None, [c_void_p, c_void_p,
                c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
@@ -245,9 +245,9 @@ def load_notw_complex_codelet(shared_object, function_name, dtype, radix):
         ## ------ end
         output_strides = [s // float_size for s in output_array.strides]
     
-        fun(input_array.ctypes.data, input_array.ctypes.data + float_size,
-            output_array.ctypes.data, output_array.ctypes.data + float_size,
-            input_strides[-1], output_strides[-1], n,
+        fun(input_array.ctypes.data,
+            output_array.ctypes.data,
+            input_strides[-1]//2, output_strides[-1]//2, n,
             input_strides[0], output_strides[0])
     ## ------ end
     return fft_notw
@@ -273,6 +273,9 @@ def generate_fft(config, variant, **kwargs):
 
     if variant == "notw":
         return load_notw_codelet(
+            shared_object, kwargs["name"], "float32", kwargs["n"])
+    if variant == "notw_complex":
+        return load_notw_complex_codelet(
             shared_object, kwargs["name"], "float32", kwargs["n"])
     elif variant == "twiddle":
         return load_twiddle_codelet(

@@ -189,6 +189,9 @@ def generate_fft(config, variant, **kwargs):
     if variant == "notw":
         return load_notw_codelet(
             shared_object, kwargs["name"], "float32", kwargs["n"])
+    if variant == "notw_complex":
+        return load_notw_complex_codelet(
+            shared_object, kwargs["name"], "float32", kwargs["n"])
     elif variant == "twiddle":
         return load_twiddle_codelet(
             shared_object, kwargs["name"], "float32", kwargs["n"])

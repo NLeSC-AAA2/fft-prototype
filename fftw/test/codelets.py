@@ -13,7 +13,7 @@ codelet_signatures = {
                c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw":    CodeletSignature(
         None, [c_void_p, c_void_p, c_void_p, c_void_p,
-               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
+               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw_complex": CodeletSignature(
         None, [c_void_p, c_void_p,
                c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
