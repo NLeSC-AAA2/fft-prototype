@@ -16,7 +16,7 @@ codelet_signatures = {
                c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),
     "twiddle": CodeletSignature(
         None, [c_void_p, c_void_p, c_void_p, c_ssize_t,
-               c_ssize_t, c_ssize_t, c_ssize_t])
+               c_ssize_t, c_ssize_t, c_ssize_t]),
     "twiddle_complex": CodeletSignature(
         None, [c_void_p, c_void_p, c_ssize_t,
                c_ssize_t, c_ssize_t, c_ssize_t])

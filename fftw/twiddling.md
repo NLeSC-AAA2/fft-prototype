@@ -95,6 +95,7 @@ def load_twiddle_complex_codelet(shared_object, function_name, dtype, radix):
             assert(twiddle_factors.shape == (input_array.shape[0], n_w))
 
         <<input-strides>>
+        print("twiddle {} {} {}".format(radix, n, input_strides))
         fun(input_array.ctypes.data,
             twiddle_factors.ctypes.data,
             input_strides[-1], 0, n, input_strides[0])

@@ -247,7 +247,7 @@ def load_notw_complex_codelet(shared_object, function_name, dtype, radix):
             n = input_array.shape[0]
         ## ------ end
         output_strides = [s // float_size for s in output_array.strides]
-    
+        print("notw {} {} {} {}".format(radix, n, input_strides, output_strides))
         fun(input_array.ctypes.data,
             output_array.ctypes.data,
             input_strides[-1], output_strides[-1], n,
@@ -294,6 +294,7 @@ def load_twiddle_complex_codelet(shared_object, function_name, dtype, radix):
         else:
             n = input_array.shape[0]
         ## ------ end
+        print("twiddle {} {} {}".format(radix, n, input_strides))
         fun(input_array.ctypes.data,
             twiddle_factors.ctypes.data,
             input_strides[-1], 0, n, input_strides[0])

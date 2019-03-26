@@ -290,7 +290,7 @@ def fft_notw(input_array, output_array):
     <<notw-assertions>>
     <<input-strides>>
     output_strides = [s // float_size for s in output_array.strides]
-
+    print("notw {} {} {} {}".format(radix, n, input_strides, output_strides))
     fun(input_array.ctypes.data,
         output_array.ctypes.data,
         input_strides[-1], output_strides[-1], n,

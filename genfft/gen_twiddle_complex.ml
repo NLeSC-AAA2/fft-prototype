@@ -128,7 +128,7 @@ let generate n =
 	 ename,
 	 [Decl (decl_prefix ^ C.realtypep, rioarray);
 	  (* Decl (C.realtypep, iioarray); *)
-	  Decl (decl_prefix ^ C.constrealtypep, twarray);
+	  Decl ("__constant " ^ C.realtypep, twarray);
 	  Decl (C.stridetype, rs);
 	  Decl ("INT", mb);
 	  Decl ("INT", me);
