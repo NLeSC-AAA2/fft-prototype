@@ -73,6 +73,35 @@ def load_twiddle_codelet(shared_object, function_name, dtype, radix):
     return fft_twiddle
 ```
 
+### Twiddle-complex codelet
+
+``` {.python #load-twiddle-complex-codelet}
+def load_twiddle_complex_codelet(shared_object, function_name, dtype, radix):
+    signature = codelet_signatures["twiddle_complex"]
+    <<load-function>>
+
+    def fft_twiddle(input_array, twiddle_factors):
+        if dtype == 'float32':
+            assert(input_array.dtype == 'complex64')
+        if dtype == 'float64':
+            assert(input_array.dtype == 'complex128')
+        <<shape-assertions>>
+
+        n_w = radix - 1
+        assert(input_array.dtype == twiddle_factors.dtype)
+        if input_array.ndim == 1:
+            assert(twiddle_factors.shape == (n_w,))
+        else:
+            assert(twiddle_factors.shape == (input_array.shape[0], n_w))
+
+        <<input-strides>>
+        fun(input_array.ctypes.data,
+            twiddle_factors.ctypes.data,
+            input_strides[-1], 0, n, input_strides[0])
+
+    return fft_twiddle
+```
+
 ## Making a larger transform
 
 The basis of Cooley-Tukey algorithm is to split the computation of the full Fourier transform into two parts. Say the length of the array is $r = nm$. We then first perform $n$ radix $m$ transforms, multiply the output by twiddle factors $w_r^{kl}$ and then do $m$ radix $n$ transforms. Here

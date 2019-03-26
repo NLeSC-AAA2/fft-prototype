@@ -20,6 +20,7 @@
  *)
 
 (* magic parameters *)
+let opencl = ref false
 let verbose = ref false
 let vneg = ref false
 let karatsuba_min = ref 15
@@ -73,7 +74,7 @@ let speclist = [
   "-name", set_string codelet_name, " set codelet name";
   "-standalone", set_bool standalone, " standalone codelet (no desc)";
   "-include", set_string inklude, undocumented;
-
+  "-opencl", set_bool opencl, " generate OpenCL kernel.";
   "-verbose", set_bool verbose, " Enable verbose logging messages to stderr";
 
   "-rader-min", set_int rader_min,

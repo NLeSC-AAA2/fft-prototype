@@ -56,12 +56,12 @@ let nonstandard_optimizer list_of_buddy_stores dag =
   annot
 
 let generate n =
-  (* let riarray = "ri"
+  let riarray = "ri"
   and iiarray = "ii"
   and roarray = "ro"
-  and ioarray = "io" *)
-  let ciarray = "ci"
-  and coarray = "co"
+  and ioarray = "io"
+  (* and ciarray = "ci"
+  and coarray = "co" *)
   and istride = "is"
   and ostride = "os" 
   and i = "i" 
@@ -81,25 +81,25 @@ let generate n =
   let sivs = stride_to_string "ivs" !uivstride in
 
   let locations = unique_array_c n in
-  (* let input = 
+  let input = 
     locative_array_c n 
       (C.array_subscript riarray vistride)
       (C.array_subscript iiarray vistride)
-      locations sivs in *)
-  let input =
+      locations sivs in
+  (* let input =
     locative_array_z n
       (C.array_subscript ciarray vistride)
-      locations sivs in
+      locations sivs in *)
   let output = Fft.dft sign n (load_array_c n input) in
-  (* let oloc = 
+  let oloc = 
     locative_array_c n 
       (C.array_subscript roarray vostride)
       (C.array_subscript ioarray vostride)
-      locations sovs in *)
-  let oloc =
+      locations sovs in
+  (* let oloc =
     locative_array_z n
       (C.array_subscript coarray vostride)
-      locations sovs in
+      locations sovs in *)
   let list_of_buddy_stores =
     let k = !Simdmagic.store_multiple in
     if (k > 1) then
@@ -118,32 +118,44 @@ let generate n =
   let odag = store_array_c n oloc output in
   let annot = nonstandard_optimizer list_of_buddy_stores odag in
 
+  let fun_prefix =
+    if !Magic.opencl then "__kernel " else
+    if !Magic.standalone then "" else "static "
+  and decl_prefix =
+    if !Magic.opencl then "__global " else ""
+  in
+
   let body = Block (
     [Decl ("INT", i)],
     [For (Expr_assign (CVar i, CVar v),
 	  Binop (" > ", CVar i, Integer 0),
 	  list_to_comma 
 	    [Expr_assign (CVar i, CPlus [CVar i; CUminus (byvl (Integer 1))]);
-	     (* Expr_assign (CVar riarray, CPlus [CVar riarray; 
-					       byvl (CVar sivs)]); *)
-	     Expr_assign (CVar ciarray, CPlus [CVar ciarray; 
+	     Expr_assign (CVar riarray, CPlus [CVar riarray; 
 					       byvl (CVar sivs)]);
-	     (* Expr_assign (CVar roarray, CPlus [CVar roarray;
-					       byvl (CVar sovs)]); *)
-	     Expr_assign (CVar coarray, CPlus [CVar coarray; 
+	     (* Expr_assign (CVar ciarray, CPlus [CVar ciarray; 
+					       byvl (CVar sivs)]); *)
+	     Expr_assign (CVar roarray, CPlus [CVar roarray;
 					       byvl (CVar sovs)]);
+	     (* Expr_assign (CVar coarray, CPlus [CVar coarray; 
+					       byvl (CVar sovs)]); *)
 	     make_volatile_stride (4*n) (CVar istride);
 	     make_volatile_stride (4*n) (CVar ostride)
 	   ],
-	  Asch annot)
-   ])
+	  Block (
+	    [ Decl (decl_prefix ^ C.constrealtypep, iiarray);
+	      Decl (decl_prefix ^ C.realtypep, ioarray) ],
+	    [ Stmt_assign (CVar iiarray, CPlus [CVar riarray; byvl (Integer 1)]);
+	      Stmt_assign (CVar ioarray, CPlus [CVar roarray; byvl (Integer 1)]);
+	      Asch annot ])) 
+	])
   in
 
   let tree =
-    Fcn ((if !Magic.standalone then "void" else "static void"), ename,
-	 ([Decl (C.constrealtypep, ciarray);
+    Fcn (fun_prefix ^ "void", ename,
+	 ([Decl (decl_prefix ^ C.constrealtypep, riarray);
 	   (* Decl (C.constrealtypep, iiarray); *)
-	   Decl (C.realtypep, coarray);
+	   Decl (decl_prefix ^ C.realtypep, roarray);
  	   (* Decl (C.realtypep, ioarray); *)
 	   Decl (C.stridetype, istride);
 	   Decl (C.stridetype, ostride);

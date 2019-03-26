@@ -25,15 +25,18 @@ CodeletSignature = namedtuple(
     "CodeletSignature", ["return_type", "arg_types"])
 
 codelet_signatures = {
-    "twiddle": CodeletSignature(
-        None, [c_void_p, c_void_p, c_void_p, c_ssize_t,
-               c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw":    CodeletSignature(
         None, [c_void_p, c_void_p, c_void_p, c_void_p,
                c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw_complex": CodeletSignature(
         None, [c_void_p, c_void_p,
-               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
+               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),
+    "twiddle": CodeletSignature(
+        None, [c_void_p, c_void_p, c_void_p, c_ssize_t,
+               c_ssize_t, c_ssize_t, c_ssize_t]),
+    "twiddle_complex": CodeletSignature(
+        None, [c_void_p, c_void_p, c_ssize_t,
+               c_ssize_t, c_ssize_t, c_ssize_t])
 }
 ## ------ end
 ## ------ begin <<codelet-generator>>[0]
@@ -129,7 +132,7 @@ def build_shared_object(config, source):
     target.parent.mkdir(exist_ok=True)
     subprocess.run(
         compile_command(config, target),
-        check=True, text=True, input=source)
+        check=True, text=True, input=source, stderr=subprocess.PIPE)
     return Path(target)
 ## ------ end
 
@@ -247,10 +250,55 @@ def load_notw_complex_codelet(shared_object, function_name, dtype, radix):
     
         fun(input_array.ctypes.data,
             output_array.ctypes.data,
-            input_strides[-1]//2, output_strides[-1]//2, n,
+            input_strides[-1], output_strides[-1], n,
             input_strides[0], output_strides[0])
     ## ------ end
     return fft_notw
+## ------ end
+## ------ begin <<load-twiddle-complex-codelet>>[0]
+def load_twiddle_complex_codelet(shared_object, function_name, dtype, radix):
+    signature = codelet_signatures["twiddle_complex"]
+    ## ------ begin <<load-function>>[0]
+    lib = cdll.LoadLibrary(shared_object)
+    fun = getattr(lib, function_name)
+    fun.argtypes = signature.arg_types
+    dtype = np.dtype(dtype)
+    ## ------ end
+
+    def fft_twiddle(input_array, twiddle_factors):
+        if dtype == 'float32':
+            assert(input_array.dtype == 'complex64')
+        if dtype == 'float64':
+            assert(input_array.dtype == 'complex128')
+        ## ------ begin <<shape-assertions>>[0]
+        if input_array.ndim == 1:
+            assert(input_array.size == radix)
+        elif input_array.ndim == 2:
+            assert(input_array.shape[1] == radix)
+        else:
+            raise ValueError("Expecting array of dimension 1 or 2.")
+        ## ------ end
+
+        n_w = radix - 1
+        assert(input_array.dtype == twiddle_factors.dtype)
+        if input_array.ndim == 1:
+            assert(twiddle_factors.shape == (n_w,))
+        else:
+            assert(twiddle_factors.shape == (input_array.shape[0], n_w))
+
+        ## ------ begin <<input-strides>>[0]
+        float_size = dtype.itemsize
+        input_strides = [s // float_size for s in input_array.strides]
+        if input_array.ndim == 1:
+            n = 1
+        else:
+            n = input_array.shape[0]
+        ## ------ end
+        fun(input_array.ctypes.data,
+            twiddle_factors.ctypes.data,
+            input_strides[-1], 0, n, input_strides[0])
+
+    return fft_twiddle
 ## ------ end
 
 ## ------ begin <<noodles-run>>[0]
@@ -277,9 +325,11 @@ def generate_fft(config, variant, **kwargs):
     if variant == "notw_complex":
         return load_notw_complex_codelet(
             shared_object, kwargs["name"], "float32", kwargs["n"])
-    elif variant == "twiddle":
+    if variant == "twiddle":
         return load_twiddle_codelet(
             shared_object, kwargs["name"], "float32", kwargs["n"])
-    else:
-        raise ValueError("Unknown FFT variant: " + variant)
+    if variant == "twiddle_complex":
+        return load_twiddle_complex_codelet(
+            shared_object, kwargs["name"], "float32", kwargs["n"])
+    raise ValueError("Unknown FFT variant: " + variant)
 ## ------ end

@@ -195,15 +195,18 @@ CodeletSignature = namedtuple(
     "CodeletSignature", ["return_type", "arg_types"])
 
 codelet_signatures = {
-    "twiddle": CodeletSignature(
-        None, [c_void_p, c_void_p, c_void_p, c_ssize_t,
-               c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw":    CodeletSignature(
         None, [c_void_p, c_void_p, c_void_p, c_void_p,
                c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw_complex": CodeletSignature(
         None, [c_void_p, c_void_p,
-               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
+               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),
+    "twiddle": CodeletSignature(
+        None, [c_void_p, c_void_p, c_void_p, c_ssize_t,
+               c_ssize_t, c_ssize_t, c_ssize_t]),
+    "twiddle_complex": CodeletSignature(
+        None, [c_void_p, c_void_p, c_ssize_t,
+               c_ssize_t, c_ssize_t, c_ssize_t])
 }
 ```
 
@@ -290,7 +293,7 @@ def fft_notw(input_array, output_array):
 
     fun(input_array.ctypes.data,
         output_array.ctypes.data,
-        input_strides[-1]//2, output_strides[-1]//2, n,
+        input_strides[-1], output_strides[-1], n,
         input_strides[0], output_strides[0])
 ```
 

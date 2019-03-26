@@ -131,7 +131,7 @@ def build_shared_object(config, source):
     target.parent.mkdir(exist_ok=True)
     subprocess.run(
         compile_command(config, target),
-        check=True, text=True, input=source)
+        check=True, text=True, input=source, stderr=subprocess.PIPE)
     return Path(target)
 ```
 
@@ -175,6 +175,7 @@ import noodles
 <<load-notw-codelet>>
 <<load-twiddle-codelet>>
 <<load-notw-complex-codelet>>
+<<load-twiddle-complex-codelet>>
 
 <<noodles-run>>
 
@@ -192,10 +193,12 @@ def generate_fft(config, variant, **kwargs):
     if variant == "notw_complex":
         return load_notw_complex_codelet(
             shared_object, kwargs["name"], "float32", kwargs["n"])
-    elif variant == "twiddle":
+    if variant == "twiddle":
         return load_twiddle_codelet(
             shared_object, kwargs["name"], "float32", kwargs["n"])
-    else:
-        raise ValueError("Unknown FFT variant: " + variant)
+    if variant == "twiddle_complex":
+        return load_twiddle_complex_codelet(
+            shared_object, kwargs["name"], "float32", kwargs["n"])
+    raise ValueError("Unknown FFT variant: " + variant)
 ```
 

@@ -8,15 +8,18 @@ CodeletSignature = namedtuple(
     "CodeletSignature", ["return_type", "arg_types"])
 
 codelet_signatures = {
-    "twiddle": CodeletSignature(
-        None, [c_void_p, c_void_p, c_void_p, c_ssize_t,
-               c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw":    CodeletSignature(
         None, [c_void_p, c_void_p, c_void_p, c_void_p,
                c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),
     "notw_complex": CodeletSignature(
         None, [c_void_p, c_void_p,
-               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])
+               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),
+    "twiddle": CodeletSignature(
+        None, [c_void_p, c_void_p, c_void_p, c_ssize_t,
+               c_ssize_t, c_ssize_t, c_ssize_t])
+    "twiddle_complex": CodeletSignature(
+        None, [c_void_p, c_void_p, c_ssize_t,
+               c_ssize_t, c_ssize_t, c_ssize_t])
 }
 ## ------ end
 ## ------ begin <<load-notw-codelet>>[0]

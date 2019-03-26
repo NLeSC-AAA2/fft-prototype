@@ -29,12 +29,11 @@ open Expr
 open Annotate
 open List
 
-let ptrprefix = if !Magic.opencl then "__global " else ""
 let realtype = "R"
-let realtypep = ptrprefix ^ realtype ^ " *"
+let realtypep = "__global " ^ realtype ^ " *"
 let extended_realtype = "E"
 let constrealtype = "const " ^ realtype
-let constrealtypep = ptrprefix ^ constrealtype ^ " *"
+let constrealtypep = "__global " ^ constrealtype ^ " *"
 
 let stridetype = "stride"
 
