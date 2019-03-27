@@ -97,14 +97,23 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <li><a href="#running-codelets-from-python">Running codelets from Python</a><ul>
 <li><a href="#signatures">Signatures</a></li>
 <li><a href="#loading-a-codelet">Loading a codelet</a></li>
+<li><a href="#notw-complex-codelet">Notw-complex codelet</a></li>
 <li><a href="#main-body">Main body</a></li>
+</ul></li>
+<li><a href="#adapting-genfft">Adapting GenFFT</a><ul>
+<li><a href="#merging-real-and-imaginary-arguments">Merging real and imaginary arguments</a></li>
 </ul></li>
 <li><a href="#building-codelets-from-python">Building codelets from Python</a></li>
 <li><a href="#generating-opencl-codelets">Generating OpenCL codelets</a><ul>
 <li><a href="#parsing-function-declaration">Parsing function declaration</a></li>
 <li><a href="#example">Example</a></li>
 </ul></li>
-<li><a href="#running-an-opencl-codelet">Running an OpenCL codelet</a></li>
+<li><a href="#running-an-opencl-codelet">Running an OpenCL codelet</a><ul>
+<li><a href="#opencl-macros">OpenCL Macros</a></li>
+<li><a href="#twiddle-factors">Twiddle factors</a></li>
+<li><a href="#two-stage-fft">Two stage FFT</a></li>
+<li><a href="#test-program">Test program</a></li>
+</ul></li>
 <li><a href="#cooley-tukey-algorithm">Cooley-Tukey algorithm</a><ul>
 <li><a href="#the-twiddle-codelet">The twiddle codelet</a></li>
 <li><a href="#making-a-larger-transform">Making a larger transform</a></li>
@@ -260,13 +269,19 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <a class="sourceLine" id="codelet-signatures-2" title="2">    <span class="st">&quot;CodeletSignature&quot;</span>, [<span class="st">&quot;return_type&quot;</span>, <span class="st">&quot;arg_types&quot;</span>])</a>
 <a class="sourceLine" id="codelet-signatures-3" title="3"></a>
 <a class="sourceLine" id="codelet-signatures-4" title="4">codelet_signatures <span class="op">=</span> {</a>
-<a class="sourceLine" id="codelet-signatures-5" title="5">    <span class="st">&quot;twiddle&quot;</span>: CodeletSignature(</a>
-<a class="sourceLine" id="codelet-signatures-6" title="6">        <span class="va">None</span>, [c_void_p, c_void_p, c_void_p, c_ssize_t,</a>
-<a class="sourceLine" id="codelet-signatures-7" title="7">               c_ssize_t, c_ssize_t, c_ssize_t]),</a>
-<a class="sourceLine" id="codelet-signatures-8" title="8">    <span class="st">&quot;notw&quot;</span>:    CodeletSignature(</a>
-<a class="sourceLine" id="codelet-signatures-9" title="9">        <span class="va">None</span>, [c_void_p, c_void_p, c_void_p, c_void_p,</a>
-<a class="sourceLine" id="codelet-signatures-10" title="10">               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t])</a>
-<a class="sourceLine" id="codelet-signatures-11" title="11">}</a></code></pre></div>
+<a class="sourceLine" id="codelet-signatures-5" title="5">    <span class="st">&quot;notw&quot;</span>:    CodeletSignature(</a>
+<a class="sourceLine" id="codelet-signatures-6" title="6">        <span class="va">None</span>, [c_void_p, c_void_p, c_void_p, c_void_p,</a>
+<a class="sourceLine" id="codelet-signatures-7" title="7">               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),</a>
+<a class="sourceLine" id="codelet-signatures-8" title="8">    <span class="st">&quot;notw_complex&quot;</span>: CodeletSignature(</a>
+<a class="sourceLine" id="codelet-signatures-9" title="9">        <span class="va">None</span>, [c_void_p, c_void_p,</a>
+<a class="sourceLine" id="codelet-signatures-10" title="10">               c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t, c_ssize_t]),</a>
+<a class="sourceLine" id="codelet-signatures-11" title="11">    <span class="st">&quot;twiddle&quot;</span>: CodeletSignature(</a>
+<a class="sourceLine" id="codelet-signatures-12" title="12">        <span class="va">None</span>, [c_void_p, c_void_p, c_void_p, c_ssize_t,</a>
+<a class="sourceLine" id="codelet-signatures-13" title="13">               c_ssize_t, c_ssize_t, c_ssize_t]),</a>
+<a class="sourceLine" id="codelet-signatures-14" title="14">    <span class="st">&quot;twiddle_complex&quot;</span>: CodeletSignature(</a>
+<a class="sourceLine" id="codelet-signatures-15" title="15">        <span class="va">None</span>, [c_void_p, c_void_p, c_ssize_t,</a>
+<a class="sourceLine" id="codelet-signatures-16" title="16">               c_ssize_t, c_ssize_t, c_ssize_t])</a>
+<a class="sourceLine" id="codelet-signatures-17" title="17">}</a></code></pre></div>
 <h3 id="loading-a-codelet">Loading a codelet</h3>
 <p><em>«load-notw-codelet»=</em></p>
 <div class="sourceCode" id="load-notw-codelet"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="load-notw-codelet-1" title="1"><span class="kw">def</span> load_notw_codelet(shared_object, function_name, dtype, radix):</a>
@@ -315,6 +330,23 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <a class="sourceLine" id="shape-assertions-4" title="4">    <span class="cf">assert</span>(input_array.shape[<span class="dv">1</span>] <span class="op">==</span> radix)</a>
 <a class="sourceLine" id="shape-assertions-5" title="5"><span class="cf">else</span>:</a>
 <a class="sourceLine" id="shape-assertions-6" title="6">    <span class="cf">raise</span> <span class="pp">ValueError</span>(<span class="st">&quot;Expecting array of dimension 1 or 2.&quot;</span>)</a></code></pre></div>
+<h3 id="notw-complex-codelet">Notw-complex codelet</h3>
+<p><em>«load-notw-complex-codelet»=</em></p>
+<div class="sourceCode" id="load-notw-complex-codelet"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="load-notw-complex-codelet-1" title="1"><span class="kw">def</span> load_notw_complex_codelet(shared_object, function_name, dtype, radix):</a>
+<a class="sourceLine" id="load-notw-complex-codelet-2" title="2">    signature <span class="op">=</span> codelet_signatures[<span class="st">&quot;notw_complex&quot;</span>]</a>
+<a class="sourceLine" id="load-notw-complex-codelet-3" title="3">    <span class="op">&lt;&lt;</span>load<span class="op">-</span>function<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="load-notw-complex-codelet-4" title="4">    <span class="op">&lt;&lt;</span>make<span class="op">-</span>notw<span class="op">-</span><span class="bu">complex</span><span class="op">-</span>wrapper<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="load-notw-complex-codelet-5" title="5">    <span class="cf">return</span> fft_notw</a></code></pre></div>
+<p><em>«make-notw-complex-wrapper»=</em></p>
+<div class="sourceCode" id="make-notw-complex-wrapper"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="make-notw-complex-wrapper-1" title="1"><span class="kw">def</span> fft_notw(input_array, output_array):</a>
+<a class="sourceLine" id="make-notw-complex-wrapper-2" title="2">    <span class="op">&lt;&lt;</span>notw<span class="op">-</span>assertions<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="make-notw-complex-wrapper-3" title="3">    <span class="op">&lt;&lt;</span><span class="bu">input</span><span class="op">-</span>strides<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="make-notw-complex-wrapper-4" title="4">    output_strides <span class="op">=</span> [s <span class="op">//</span> float_size <span class="cf">for</span> s <span class="kw">in</span> output_array.strides]</a>
+<a class="sourceLine" id="make-notw-complex-wrapper-5" title="5">    <span class="bu">print</span>(<span class="st">&quot;notw </span><span class="sc">{}</span><span class="st"> </span><span class="sc">{}</span><span class="st"> </span><span class="sc">{}</span><span class="st"> </span><span class="sc">{}</span><span class="st">&quot;</span>.<span class="bu">format</span>(radix, n, input_strides, output_strides))</a>
+<a class="sourceLine" id="make-notw-complex-wrapper-6" title="6">    fun(input_array.ctypes.data,</a>
+<a class="sourceLine" id="make-notw-complex-wrapper-7" title="7">        output_array.ctypes.data,</a>
+<a class="sourceLine" id="make-notw-complex-wrapper-8" title="8">        input_strides[<span class="op">-</span><span class="dv">1</span>], output_strides[<span class="op">-</span><span class="dv">1</span>], n,</a>
+<a class="sourceLine" id="make-notw-complex-wrapper-9" title="9">        input_strides[<span class="dv">0</span>], output_strides[<span class="dv">0</span>])</a></code></pre></div>
 <h3 id="main-body">Main body</h3>
 <p><em>«run-main»=</em></p>
 <div class="sourceCode" id="run-main"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="run-main-1" title="1">fft7 <span class="op">=</span> load_notw_codelet(<span class="st">&quot;build/notw-7.gen.so&quot;</span>, <span class="st">&quot;fft&quot;</span>, <span class="st">&quot;float32&quot;</span>, <span class="dv">7</span>)</a>
@@ -323,6 +355,42 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <a class="sourceLine" id="run-main-4" title="4">fft7(x, y)</a>
 <a class="sourceLine" id="run-main-5" title="5"><span class="bu">print</span>(y)</a>
 <a class="sourceLine" id="run-main-6" title="6"><span class="bu">print</span>(np.fft.fft(x))</a></code></pre></div>
+<h2 id="adapting-genfft">Adapting GenFFT</h2>
+<h3 id="merging-real-and-imaginary-arguments">Merging real and imaginary arguments</h3>
+<p>For creating an OpenCL kernel it is easier to pass the array arguments as a single pointer in stead of real/imaginary pair of pointers.</p>
+<p>To translate from C arrays to indices in the code generator, GenFFT creates an array of symbolic values that reference indices into the C array somehow. The function that does this is called <code>locative_array_c</code>. It creates an array of <em>locatives</em>, which is a term used to identify values with a locational property, as being a member of a sequence.</p>
+<p>In its original form <code>locative_array_c</code> takes separate arguments for the real and imaginary parts:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode ocaml"><code class="sourceCode ocaml"><a class="sourceLine" id="cb6-1" title="1"><span class="kw">let</span> locative_array_c n rarr iarr loc vs = </a>
+<a class="sourceLine" id="cb6-2" title="2">  <span class="dt">array</span> n (<span class="kw">fun</span> i -&gt; </a>
+<a class="sourceLine" id="cb6-3" title="3">    <span class="kw">let</span> klass = Unique.make () <span class="kw">in</span></a>
+<a class="sourceLine" id="cb6-4" title="4">    <span class="kw">let</span> (rloc, iloc) = loc i <span class="kw">in</span></a>
+<a class="sourceLine" id="cb6-5" title="5">    (Variable.make_locative rloc klass rarr i vs,</a>
+<a class="sourceLine" id="cb6-6" title="6">     Variable.make_locative iloc klass iarr i vs))</a></code></pre></div>
+<p>I changed this to take only the one complex array argument and compute the real and imaginary indices.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode ocaml"><code class="sourceCode ocaml"><a class="sourceLine" id="cb7-1" title="1"><span class="kw">let</span> locative_array_z n carr loc vs =</a>
+<a class="sourceLine" id="cb7-2" title="2">  <span class="dt">array</span> n (<span class="kw">fun</span> i -&gt;</a>
+<a class="sourceLine" id="cb7-3" title="3">    <span class="kw">let</span> klass = Unique.make () <span class="kw">in</span></a>
+<a class="sourceLine" id="cb7-4" title="4">    <span class="kw">let</span> (rloc, iloc) = loc i <span class="kw">in</span></a>
+<a class="sourceLine" id="cb7-5" title="5">    (Variable.make_locative rloc klass carr (<span class="dv">2</span>*i) vs,</a>
+<a class="sourceLine" id="cb7-6" title="6">     Variable.make_locative iloc klass carr (<span class="dv">2</span>*i + <span class="dv">1</span>) vs))</a></code></pre></div>
+<p>Then, in the generator code, where we had</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode ocaml"><code class="sourceCode ocaml"><a class="sourceLine" id="cb8-1" title="1"><span class="kw">let</span> <span class="dt">input</span> = </a>
+<a class="sourceLine" id="cb8-2" title="2">  locative_array_c n </a>
+<a class="sourceLine" id="cb8-3" title="3">    (C.array_subscript riarray vistride)</a>
+<a class="sourceLine" id="cb8-4" title="4">    (C.array_subscript iiarray vistride)</a>
+<a class="sourceLine" id="cb8-5" title="5">    locations sivs</a></code></pre></div>
+<p>We can write</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode ocaml"><code class="sourceCode ocaml"><a class="sourceLine" id="cb9-1" title="1"><span class="kw">let</span> <span class="dt">input</span> =</a>
+<a class="sourceLine" id="cb9-2" title="2">  locative_array_z n</a>
+<a class="sourceLine" id="cb9-3" title="3">    (C.array_subscript ciarray vistride)</a>
+<a class="sourceLine" id="cb9-4" title="4">    locations sivs</a></code></pre></div>
+<p>I did the same for the output arrays and changed the definition of the for-loop to match. This changes the <code>notw</code> code from dual pointer to single complex pointer interface, although still passed as pointer to float.</p>
+<p>That was all very nice, but it only works if the stride equals one. The better solution is to just add a little code that computes the imaginary pointer from the real one. The following code block replaces the <code>Asch annot</code> that was the body in the for loop before.</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode ocaml"><code class="sourceCode ocaml"><a class="sourceLine" id="cb10-1" title="1">Block (</a>
+<a class="sourceLine" id="cb10-2" title="2">  [ Decl (C.realtypep, iioarray) ],</a>
+<a class="sourceLine" id="cb10-3" title="3">  [ Stmt_assign (CVar iioarray, CPlus [CVar rioarray; byvl (Integer <span class="dv">1</span>)]);</a>
+<a class="sourceLine" id="cb10-4" title="4">    Asch annot ])</a></code></pre></div>
+<p>This feels a bit more like a hack than the previous non-solution, but it has the advantage that it actually works.</p>
 <h2 id="building-codelets-from-python">Building codelets from Python</h2>
 <p>To generate and compile codelets we build a little pipeline using <a href="http://noodles.rtfd.io">Noodles</a>. The pipeline creates a shared object file for each codelet. Results are cached, so that <code>.so</code> files are reused later.</p>
 <p>We will build codelets on the fly. First, we need to call the codelet generator. The call to GenFFT is wrapped in a function that forwards its arguments as command-line arguments, so <code>generate_codelet(config, &quot;notw&quot;, n=4, sign=-1)</code> will result a command-line like</p>
@@ -433,7 +501,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <a class="sourceLine" id="codelet-build-5" title="5">    target.parent.mkdir(exist_ok<span class="op">=</span><span class="va">True</span>)</a>
 <a class="sourceLine" id="codelet-build-6" title="6">    subprocess.run(</a>
 <a class="sourceLine" id="codelet-build-7" title="7">        compile_command(config, target),</a>
-<a class="sourceLine" id="codelet-build-8" title="8">        check<span class="op">=</span><span class="va">True</span>, text<span class="op">=</span><span class="va">True</span>, <span class="bu">input</span><span class="op">=</span>source)</a>
+<a class="sourceLine" id="codelet-build-8" title="8">        check<span class="op">=</span><span class="va">True</span>, text<span class="op">=</span><span class="va">True</span>, <span class="bu">input</span><span class="op">=</span>source, stderr<span class="op">=</span>subprocess.PIPE)</a>
 <a class="sourceLine" id="codelet-build-9" title="9">    <span class="cf">return</span> Path(target)</a></code></pre></div>
 <p>Once we created a pipeline for building a codelet, we need to run it, in this case using a multi-threaded runner with caching enabled. Also, we need to specify how to serialise objects. Since we only call functions with standard Python objects (strings and lists) <code>noodles.serial.base</code> suffices.</p>
 <p><em>«noodles-run»=</em></p>
@@ -446,64 +514,71 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <a class="sourceLine" id="noodles-run-7" title="7">        db_file<span class="op">=</span><span class="st">&quot;lib/db&quot;</span>, echo_log<span class="op">=</span><span class="va">False</span>)</a></code></pre></div>
 <h4 id="synthesis">Synthesis</h4>
 <p>To wrap up. We can now build a codelet, and we already know howto wrap a codelet into a Python function. We can now combine those and generate any codelet function on the fly.</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode py"><code class="sourceCode python"><a class="sourceLine" id="cb7-1" title="1"><span class="im">import</span> subprocess</a>
-<a class="sourceLine" id="cb7-2" title="2"><span class="im">import</span> re</a>
-<a class="sourceLine" id="cb7-3" title="3"><span class="im">import</span> uuid</a>
-<a class="sourceLine" id="cb7-4" title="4"></a>
-<a class="sourceLine" id="cb7-5" title="5"><span class="im">import</span> numpy <span class="im">as</span> np</a>
-<a class="sourceLine" id="cb7-6" title="6"></a>
-<a class="sourceLine" id="cb7-7" title="7"><span class="im">from</span> pathlib <span class="im">import</span> (Path)</a>
-<a class="sourceLine" id="cb7-8" title="8"><span class="im">from</span> ctypes <span class="im">import</span> (cdll, c_void_p, c_ssize_t)</a>
-<a class="sourceLine" id="cb7-9" title="9"><span class="im">from</span> collections <span class="im">import</span> (namedtuple)</a>
-<a class="sourceLine" id="cb7-10" title="10"></a>
-<a class="sourceLine" id="cb7-11" title="11"><span class="im">import</span> noodles</a>
-<a class="sourceLine" id="cb7-12" title="12"></a>
-<a class="sourceLine" id="cb7-13" title="13"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>build<span class="op">-</span>config<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb7-14" title="14"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>signatures<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb7-15" title="15"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>generator<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb7-16" title="16"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>extern<span class="op">-</span>c<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb7-17" title="17"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>indent<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb7-18" title="18"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span><span class="bu">compile</span><span class="op">-</span>command<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb7-19" title="19"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>build<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb7-20" title="20"></a>
-<a class="sourceLine" id="cb7-21" title="21"><span class="op">&lt;&lt;</span>load<span class="op">-</span>notw<span class="op">-</span>codelet<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb7-22" title="22"><span class="op">&lt;&lt;</span>load<span class="op">-</span>twiddle<span class="op">-</span>codelet<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb7-23" title="23"></a>
-<a class="sourceLine" id="cb7-24" title="24"><span class="op">&lt;&lt;</span>noodles<span class="op">-</span>run<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb7-25" title="25"></a>
-<a class="sourceLine" id="cb7-26" title="26"><span class="kw">def</span> generate_fft(config, variant, <span class="op">**</span>kwargs):</a>
-<a class="sourceLine" id="cb7-27" title="27">    kwargs[<span class="st">&quot;name&quot;</span>] <span class="op">=</span> <span class="st">&quot;fft&quot;</span></a>
-<a class="sourceLine" id="cb7-28" title="28">    code_p <span class="op">=</span> indent_code(</a>
-<a class="sourceLine" id="cb7-29" title="29">        declare_extern_c(</a>
-<a class="sourceLine" id="cb7-30" title="30">            generate_codelet(config, variant, <span class="op">**</span>kwargs)))</a>
-<a class="sourceLine" id="cb7-31" title="31">    so_p <span class="op">=</span> build_shared_object(config, code_p)</a>
-<a class="sourceLine" id="cb7-32" title="32">    shared_object <span class="op">=</span> run(so_p)</a>
-<a class="sourceLine" id="cb7-33" title="33"></a>
-<a class="sourceLine" id="cb7-34" title="34">    <span class="cf">if</span> variant <span class="op">==</span> <span class="st">&quot;notw&quot;</span>:</a>
-<a class="sourceLine" id="cb7-35" title="35">        <span class="cf">return</span> load_notw_codelet(</a>
-<a class="sourceLine" id="cb7-36" title="36">            shared_object, kwargs[<span class="st">&quot;name&quot;</span>], <span class="st">&quot;float32&quot;</span>, kwargs[<span class="st">&quot;n&quot;</span>])</a>
-<a class="sourceLine" id="cb7-37" title="37">    <span class="cf">elif</span> variant <span class="op">==</span> <span class="st">&quot;twiddle&quot;</span>:</a>
-<a class="sourceLine" id="cb7-38" title="38">        <span class="cf">return</span> load_twiddle_codelet(</a>
-<a class="sourceLine" id="cb7-39" title="39">            shared_object, kwargs[<span class="st">&quot;name&quot;</span>], <span class="st">&quot;float32&quot;</span>, kwargs[<span class="st">&quot;n&quot;</span>])</a>
-<a class="sourceLine" id="cb7-40" title="40">    <span class="cf">else</span>:</a>
-<a class="sourceLine" id="cb7-41" title="41">        <span class="cf">raise</span> <span class="pp">ValueError</span>(<span class="st">&quot;Unknown FFT variant: &quot;</span> <span class="op">+</span> variant)</a></code></pre></div>
+<div class="sourceCode" id="cb12"><pre class="sourceCode py"><code class="sourceCode python"><a class="sourceLine" id="cb12-1" title="1"><span class="im">import</span> subprocess</a>
+<a class="sourceLine" id="cb12-2" title="2"><span class="im">import</span> re</a>
+<a class="sourceLine" id="cb12-3" title="3"><span class="im">import</span> uuid</a>
+<a class="sourceLine" id="cb12-4" title="4"></a>
+<a class="sourceLine" id="cb12-5" title="5"><span class="im">import</span> numpy <span class="im">as</span> np</a>
+<a class="sourceLine" id="cb12-6" title="6"></a>
+<a class="sourceLine" id="cb12-7" title="7"><span class="im">from</span> pathlib <span class="im">import</span> (Path)</a>
+<a class="sourceLine" id="cb12-8" title="8"><span class="im">from</span> ctypes <span class="im">import</span> (cdll, c_void_p, c_ssize_t)</a>
+<a class="sourceLine" id="cb12-9" title="9"><span class="im">from</span> collections <span class="im">import</span> (namedtuple)</a>
+<a class="sourceLine" id="cb12-10" title="10"></a>
+<a class="sourceLine" id="cb12-11" title="11"><span class="im">import</span> noodles</a>
+<a class="sourceLine" id="cb12-12" title="12"></a>
+<a class="sourceLine" id="cb12-13" title="13"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>build<span class="op">-</span>config<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-14" title="14"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>signatures<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-15" title="15"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>generator<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-16" title="16"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>extern<span class="op">-</span>c<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-17" title="17"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>indent<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-18" title="18"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span><span class="bu">compile</span><span class="op">-</span>command<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-19" title="19"><span class="op">&lt;&lt;</span>codelet<span class="op">-</span>build<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-20" title="20"></a>
+<a class="sourceLine" id="cb12-21" title="21"><span class="op">&lt;&lt;</span>load<span class="op">-</span>notw<span class="op">-</span>codelet<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-22" title="22"><span class="op">&lt;&lt;</span>load<span class="op">-</span>twiddle<span class="op">-</span>codelet<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-23" title="23"><span class="op">&lt;&lt;</span>load<span class="op">-</span>notw<span class="op">-</span><span class="bu">complex</span><span class="op">-</span>codelet<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-24" title="24"><span class="op">&lt;&lt;</span>load<span class="op">-</span>twiddle<span class="op">-</span><span class="bu">complex</span><span class="op">-</span>codelet<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-25" title="25"></a>
+<a class="sourceLine" id="cb12-26" title="26"><span class="op">&lt;&lt;</span>noodles<span class="op">-</span>run<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb12-27" title="27"></a>
+<a class="sourceLine" id="cb12-28" title="28"><span class="kw">def</span> generate_fft(config, variant, <span class="op">**</span>kwargs):</a>
+<a class="sourceLine" id="cb12-29" title="29">    kwargs[<span class="st">&quot;name&quot;</span>] <span class="op">=</span> <span class="st">&quot;fft&quot;</span></a>
+<a class="sourceLine" id="cb12-30" title="30">    code_p <span class="op">=</span> indent_code(</a>
+<a class="sourceLine" id="cb12-31" title="31">        declare_extern_c(</a>
+<a class="sourceLine" id="cb12-32" title="32">            generate_codelet(config, variant, <span class="op">**</span>kwargs)))</a>
+<a class="sourceLine" id="cb12-33" title="33">    so_p <span class="op">=</span> build_shared_object(config, code_p)</a>
+<a class="sourceLine" id="cb12-34" title="34">    shared_object <span class="op">=</span> run(so_p)</a>
+<a class="sourceLine" id="cb12-35" title="35"></a>
+<a class="sourceLine" id="cb12-36" title="36">    <span class="cf">if</span> variant <span class="op">==</span> <span class="st">&quot;notw&quot;</span>:</a>
+<a class="sourceLine" id="cb12-37" title="37">        <span class="cf">return</span> load_notw_codelet(</a>
+<a class="sourceLine" id="cb12-38" title="38">            shared_object, kwargs[<span class="st">&quot;name&quot;</span>], <span class="st">&quot;float32&quot;</span>, kwargs[<span class="st">&quot;n&quot;</span>])</a>
+<a class="sourceLine" id="cb12-39" title="39">    <span class="cf">if</span> variant <span class="op">==</span> <span class="st">&quot;notw_complex&quot;</span>:</a>
+<a class="sourceLine" id="cb12-40" title="40">        <span class="cf">return</span> load_notw_complex_codelet(</a>
+<a class="sourceLine" id="cb12-41" title="41">            shared_object, kwargs[<span class="st">&quot;name&quot;</span>], <span class="st">&quot;float32&quot;</span>, kwargs[<span class="st">&quot;n&quot;</span>])</a>
+<a class="sourceLine" id="cb12-42" title="42">    <span class="cf">if</span> variant <span class="op">==</span> <span class="st">&quot;twiddle&quot;</span>:</a>
+<a class="sourceLine" id="cb12-43" title="43">        <span class="cf">return</span> load_twiddle_codelet(</a>
+<a class="sourceLine" id="cb12-44" title="44">            shared_object, kwargs[<span class="st">&quot;name&quot;</span>], <span class="st">&quot;float32&quot;</span>, kwargs[<span class="st">&quot;n&quot;</span>])</a>
+<a class="sourceLine" id="cb12-45" title="45">    <span class="cf">if</span> variant <span class="op">==</span> <span class="st">&quot;twiddle_complex&quot;</span>:</a>
+<a class="sourceLine" id="cb12-46" title="46">        <span class="cf">return</span> load_twiddle_complex_codelet(</a>
+<a class="sourceLine" id="cb12-47" title="47">            shared_object, kwargs[<span class="st">&quot;name&quot;</span>], <span class="st">&quot;float32&quot;</span>, kwargs[<span class="st">&quot;n&quot;</span>])</a>
+<a class="sourceLine" id="cb12-48" title="48">    <span class="cf">raise</span> <span class="pp">ValueError</span>(<span class="st">&quot;Unknown FFT variant: &quot;</span> <span class="op">+</span> variant)</a></code></pre></div>
 <h2 id="generating-opencl-codelets">Generating OpenCL codelets</h2>
 <p>The structure of C is almost identical to OpenCL. Where a C function looks a bit like</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode c"><code class="sourceCode c"><a class="sourceLine" id="cb8-1" title="1"><span class="dt">void</span> do_something</a>
-<a class="sourceLine" id="cb8-2" title="2">    ( <span class="dt">float</span> <span class="dt">const</span> *input</a>
-<a class="sourceLine" id="cb8-3" title="3">    , <span class="dt">float</span> *output</a>
-<a class="sourceLine" id="cb8-4" title="4">    , <span class="dt">size_t</span> n )</a>
-<a class="sourceLine" id="cb8-5" title="5">{</a>
-<a class="sourceLine" id="cb8-6" title="6">    &lt;&lt;function-body&gt;&gt;</a>
-<a class="sourceLine" id="cb8-7" title="7">}</a></code></pre></div>
+<div class="sourceCode" id="cb13"><pre class="sourceCode c"><code class="sourceCode c"><a class="sourceLine" id="cb13-1" title="1"><span class="dt">void</span> do_something</a>
+<a class="sourceLine" id="cb13-2" title="2">    ( <span class="dt">float</span> <span class="dt">const</span> *input</a>
+<a class="sourceLine" id="cb13-3" title="3">    , <span class="dt">float</span> *output</a>
+<a class="sourceLine" id="cb13-4" title="4">    , <span class="dt">size_t</span> n )</a>
+<a class="sourceLine" id="cb13-5" title="5">{</a>
+<a class="sourceLine" id="cb13-6" title="6">    &lt;&lt;function-body&gt;&gt;</a>
+<a class="sourceLine" id="cb13-7" title="7">}</a></code></pre></div>
 <p>an OpenCL kernel looks like</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode opencl"><code class="sourceCode opencl"><a class="sourceLine" id="cb9-1" title="1"><span class="kw">__kernel</span> <span class="dt">void</span> do_something</a>
-<a class="sourceLine" id="cb9-2" title="2">    ( <span class="kw">__global</span> <span class="dt">float</span> <span class="dt">const</span> *input</a>
-<a class="sourceLine" id="cb9-3" title="3">    , <span class="kw">__global</span> <span class="dt">float</span> *output</a>
-<a class="sourceLine" id="cb9-4" title="4">    , size_t n )</a>
-<a class="sourceLine" id="cb9-5" title="5">{</a>
-<a class="sourceLine" id="cb9-6" title="6">    &lt;&lt;function-body&gt;&gt;</a>
-<a class="sourceLine" id="cb9-7" title="7">}</a></code></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode opencl"><code class="sourceCode opencl"><a class="sourceLine" id="cb14-1" title="1"><span class="kw">__kernel</span> <span class="dt">void</span> do_something</a>
+<a class="sourceLine" id="cb14-2" title="2">    ( <span class="kw">__global</span> <span class="dt">float</span> <span class="dt">const</span> *input</a>
+<a class="sourceLine" id="cb14-3" title="3">    , <span class="kw">__global</span> <span class="dt">float</span> *output</a>
+<a class="sourceLine" id="cb14-4" title="4">    , size_t n )</a>
+<a class="sourceLine" id="cb14-5" title="5">{</a>
+<a class="sourceLine" id="cb14-6" title="6">    &lt;&lt;function-body&gt;&gt;</a>
+<a class="sourceLine" id="cb14-7" title="7">}</a></code></pre></div>
 <p>To have FFTW codelets work with OpenCL, and I say <em>just work</em> nothing about efficiency, all we should have to change is this function header.</p>
 <h3 id="parsing-function-declaration">Parsing function declaration</h3>
 <p>I will use <code>pyparsing</code> to parse the C function declaration. This will only parse a subset that doesn’t involve arguments passed by reference or numbers in arguments or types.</p>
@@ -536,7 +611,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <a class="sourceLine" id="parse-c-function-decl-body-6" title="6">    <span class="cf">raise</span> <span class="pp">ValueError</span>(<span class="st">&quot;Not a valid C function declaration&quot;</span>, line)</a>
 <a class="sourceLine" id="parse-c-function-decl-body-7" title="7"><span class="cf">return</span> result</a></code></pre></div>
 <p>The declaration is stored in a sequence of <code>VarDecl</code>. More precisely, it looks something like:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="cb10-1" title="1">[VarDecl, [VarDecl, ...]]</a></code></pre></div>
+<div class="sourceCode" id="cb15"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="cb15-1" title="1">[VarDecl, [VarDecl, ...]]</a></code></pre></div>
 <p>where the first declaration is the return-type and the name of the function and the second list of <code>VarDecl</code> lists all arguments. The type <code>VarDecl</code> is defined as follows:</p>
 <p><em>«vardecl-type»=</em></p>
 <div class="sourceCode" id="vardecl-type"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="vardecl-type-1" title="1"><span class="im">from</span> typing <span class="im">import</span> NamedTuple</a>
@@ -593,90 +668,131 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <a class="sourceLine" id="opencl-fun-decl-9" title="9">    <span class="cf">return</span> <span class="st">&quot;__kernel &quot;</span> <span class="op">+</span> c_var_decl(fun[<span class="dv">0</span>]) <span class="op">+</span> <span class="st">&quot;(&quot;</span> <span class="op">+</span> <span class="op">\</span></a>
 <a class="sourceLine" id="opencl-fun-decl-10" title="10">        <span class="co">&quot;, &quot;</span>.join(<span class="bu">map</span>(opencl_var_decl, fun[<span class="dv">1</span>])) <span class="op">+</span> <span class="st">&quot;)&quot;</span></a></code></pre></div>
 <h3 id="example">Example</h3>
-<div class="sourceCode" id="cb11"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="cb11-1" title="1"><span class="op">&lt;&lt;</span>vardecl<span class="op">-</span><span class="bu">type</span><span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb11-2" title="2"><span class="op">&lt;&lt;</span>make<span class="op">-</span>var<span class="op">-</span>decl<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb11-3" title="3"><span class="op">&lt;&lt;</span>parse<span class="op">-</span>c<span class="op">-</span>function<span class="op">-</span>decl<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb11-4" title="4"><span class="op">&lt;&lt;</span>c<span class="op">-</span>fun<span class="op">-</span>decl<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb11-5" title="5"><span class="op">&lt;&lt;</span>opencl<span class="op">-</span>fun<span class="op">-</span>decl<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb11-6" title="6"></a>
-<a class="sourceLine" id="cb11-7" title="7"><span class="cf">if</span> <span class="va">__name__</span> <span class="op">==</span> <span class="st">&quot;__main__&quot;</span>:</a>
-<a class="sourceLine" id="cb11-8" title="8">    x <span class="op">=</span> parse_c_function_decl(</a>
-<a class="sourceLine" id="cb11-9" title="9">        <span class="st">&quot;void fft_notw(const R * ri, const R * ii, R * ro, R * io, &quot;</span> <span class="op">+</span> </a>
-<a class="sourceLine" id="cb11-10" title="10">        <span class="st">&quot;stride is, stride os, INT v, INT ivs, INT ovs)&quot;</span>)</a>
-<a class="sourceLine" id="cb11-11" title="11">    <span class="bu">print</span>(<span class="st">&quot;C declaration:</span><span class="ch">\n</span><span class="st">    &quot;</span>, c_fun_decl(x))</a>
-<a class="sourceLine" id="cb11-12" title="12">    <span class="bu">print</span>(<span class="st">&quot;OpenCL declaration:</span><span class="ch">\n</span><span class="st">    &quot;</span>, opencl_fun_decl(x))</a></code></pre></div>
+<div class="sourceCode" id="cb16"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="cb16-1" title="1"><span class="op">&lt;&lt;</span>vardecl<span class="op">-</span><span class="bu">type</span><span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb16-2" title="2"><span class="op">&lt;&lt;</span>make<span class="op">-</span>var<span class="op">-</span>decl<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb16-3" title="3"><span class="op">&lt;&lt;</span>parse<span class="op">-</span>c<span class="op">-</span>function<span class="op">-</span>decl<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb16-4" title="4"><span class="op">&lt;&lt;</span>c<span class="op">-</span>fun<span class="op">-</span>decl<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb16-5" title="5"><span class="op">&lt;&lt;</span>opencl<span class="op">-</span>fun<span class="op">-</span>decl<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb16-6" title="6"></a>
+<a class="sourceLine" id="cb16-7" title="7"><span class="cf">if</span> <span class="va">__name__</span> <span class="op">==</span> <span class="st">&quot;__main__&quot;</span>:</a>
+<a class="sourceLine" id="cb16-8" title="8">    x <span class="op">=</span> parse_c_function_decl(</a>
+<a class="sourceLine" id="cb16-9" title="9">        <span class="st">&quot;void fft_notw(const R * ri, const R * ii, R * ro, R * io, &quot;</span> <span class="op">+</span> </a>
+<a class="sourceLine" id="cb16-10" title="10">        <span class="st">&quot;stride is, stride os, INT v, INT ivs, INT ovs)&quot;</span>)</a>
+<a class="sourceLine" id="cb16-11" title="11">    <span class="bu">print</span>(<span class="st">&quot;C declaration:</span><span class="ch">\n</span><span class="st">    &quot;</span>, c_fun_decl(x))</a>
+<a class="sourceLine" id="cb16-12" title="12">    <span class="bu">print</span>(<span class="st">&quot;OpenCL declaration:</span><span class="ch">\n</span><span class="st">    &quot;</span>, opencl_fun_decl(x))</a></code></pre></div>
 <h2 id="running-an-opencl-codelet">Running an OpenCL codelet</h2>
-<div class="sourceCode" id="cb12"><pre class="sourceCode opencl"><code class="sourceCode opencl"></code></pre></div>
-<div class="sourceCode" id="cb13"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="cb13-1" title="1"><span class="im">import</span> pyopencl <span class="im">as</span> cl</a>
-<a class="sourceLine" id="cb13-2" title="2"><span class="im">import</span> os</a>
-<a class="sourceLine" id="cb13-3" title="3"><span class="im">from</span> copy <span class="im">import</span> copy</a>
-<a class="sourceLine" id="cb13-4" title="4"></a>
-<a class="sourceLine" id="cb13-5" title="5"><span class="im">from</span> codelets <span class="im">import</span> (generate_codelet, indent_code, default_config)</a>
-<a class="sourceLine" id="cb13-6" title="6"><span class="im">from</span> noodles.run.single.vanilla <span class="im">import</span> run_single</a>
-<a class="sourceLine" id="cb13-7" title="7"><span class="im">from</span> parse_c_header <span class="im">import</span> (parse_c_function_decl, opencl_fun_decl, ParseException)</a>
-<a class="sourceLine" id="cb13-8" title="8"></a>
-<a class="sourceLine" id="cb13-9" title="9">cfg <span class="op">=</span> copy(default_config)</a>
-<a class="sourceLine" id="cb13-10" title="10">ctx <span class="op">=</span> cl.create_some_context()</a>
-<a class="sourceLine" id="cb13-11" title="11">queue <span class="op">=</span> cl.CommandQueue(ctx)</a>
-<a class="sourceLine" id="cb13-12" title="12"><span class="bu">print</span>(<span class="st">&quot;Running on: &quot;</span>, ctx.devices[<span class="dv">0</span>].name)</a>
-<a class="sourceLine" id="cb13-13" title="13"></a>
-<a class="sourceLine" id="cb13-14" title="14"><span class="kw">def</span> openclize(code):</a>
-<a class="sourceLine" id="cb13-15" title="15">    <span class="kw">def</span> tr(line):</a>
-<a class="sourceLine" id="cb13-16" title="16">        <span class="cf">try</span>:</a>
-<a class="sourceLine" id="cb13-17" title="17">            decl <span class="op">=</span> parse_c_function_decl(line)</a>
-<a class="sourceLine" id="cb13-18" title="18">            <span class="cf">return</span> opencl_fun_decl(decl)</a>
-<a class="sourceLine" id="cb13-19" title="19">        <span class="cf">except</span> <span class="pp">ValueError</span>:</a>
-<a class="sourceLine" id="cb13-20" title="20">            <span class="cf">return</span> line</a>
-<a class="sourceLine" id="cb13-21" title="21"></a>
-<a class="sourceLine" id="cb13-22" title="22">    <span class="cf">return</span> <span class="st">&quot;</span><span class="ch">\n</span><span class="st">&quot;</span>.join(tr(line) <span class="cf">for</span> line <span class="kw">in</span> code.splitlines())</a>
-<a class="sourceLine" id="cb13-23" title="23"></a>
-<a class="sourceLine" id="cb13-24" title="24"></a>
-<a class="sourceLine" id="cb13-25" title="25">macros <span class="op">=</span> {</a>
-<a class="sourceLine" id="cb13-26" title="26">    <span class="st">&quot;R&quot;</span>: <span class="st">&quot;float&quot;</span>,</a>
-<a class="sourceLine" id="cb13-27" title="27">    <span class="st">&quot;E&quot;</span>: <span class="st">&quot;R&quot;</span>,</a>
-<a class="sourceLine" id="cb13-28" title="28">    <span class="st">&quot;stride&quot;</span>: <span class="st">&quot;int&quot;</span>,</a>
-<a class="sourceLine" id="cb13-29" title="29">    <span class="st">&quot;INT&quot;</span>: <span class="st">&quot;int&quot;</span>,</a>
-<a class="sourceLine" id="cb13-30" title="30">    <span class="st">&quot;K(x)&quot;</span>: <span class="st">&quot;((E) x)&quot;</span>,</a>
-<a class="sourceLine" id="cb13-31" title="31">    <span class="st">&quot;DK(name,value)&quot;</span>: <span class="st">&quot;const E name = K(value)&quot;</span>,</a>
-<a class="sourceLine" id="cb13-32" title="32">    <span class="st">&quot;WS(s,i)&quot;</span>: <span class="st">&quot;s*i&quot;</span>,</a>
-<a class="sourceLine" id="cb13-33" title="33">    <span class="st">&quot;MAKE_VOLATILE_STRIDE(x,y)&quot;</span>: <span class="st">&quot;0&quot;</span>,</a>
-<a class="sourceLine" id="cb13-34" title="34">    <span class="st">&quot;FMA(a,b,c)&quot;</span>: <span class="st">&quot;a * b + c&quot;</span>,</a>
-<a class="sourceLine" id="cb13-35" title="35">    <span class="st">&quot;FMS(a,b,c)&quot;</span>: <span class="st">&quot;a * b - c&quot;</span>,</a>
-<a class="sourceLine" id="cb13-36" title="36">    <span class="st">&quot;FNMA(a,b,c)&quot;</span>: <span class="st">&quot;-a * b - c&quot;</span>,</a>
-<a class="sourceLine" id="cb13-37" title="37">    <span class="st">&quot;FNMS(a,b,c)&quot;</span>: <span class="st">&quot;-a * b + c&quot;</span></a>
-<a class="sourceLine" id="cb13-38" title="38">}</a>
-<a class="sourceLine" id="cb13-39" title="39"></a>
-<a class="sourceLine" id="cb13-40" title="40"><span class="kw">def</span> macros_to_options(m):</a>
-<a class="sourceLine" id="cb13-41" title="41">    <span class="cf">return</span> <span class="bu">sum</span>([[<span class="st">&quot;-D&quot;</span>, k <span class="op">+</span> <span class="st">&quot;=&quot;</span> <span class="op">+</span> v] <span class="cf">for</span> k, v <span class="kw">in</span> macros.items()], [])</a>
-<a class="sourceLine" id="cb13-42" title="42"></a>
-<a class="sourceLine" id="cb13-43" title="43"><span class="kw">def</span> macros_to_code(m):</a>
-<a class="sourceLine" id="cb13-44" title="44">    <span class="cf">return</span> <span class="st">&quot;</span><span class="ch">\n</span><span class="st">&quot;</span>.join(<span class="st">&quot;#define </span><span class="sc">{}</span><span class="st"> </span><span class="sc">{}</span><span class="st">&quot;</span>.<span class="bu">format</span>(k, v) <span class="cf">for</span> k, v <span class="kw">in</span> macros.items())</a>
-<a class="sourceLine" id="cb13-45" title="45"></a>
-<a class="sourceLine" id="cb13-46" title="46">c_code <span class="op">=</span> run_single(generate_codelet(cfg, <span class="st">&quot;notw&quot;</span>, n<span class="op">=</span><span class="dv">16</span>, name<span class="op">=</span><span class="st">&quot;fft&quot;</span>))</a>
-<a class="sourceLine" id="cb13-47" title="47">opencl_code <span class="op">=</span> macros_to_code(macros) <span class="op">+</span> <span class="st">&quot;</span><span class="ch">\n</span><span class="st">&quot;</span> <span class="op">+</span> openclize(c_code)</a>
-<a class="sourceLine" id="cb13-48" title="48"></a>
-<a class="sourceLine" id="cb13-49" title="49">prg <span class="op">=</span> cl.Program(ctx, opencl_code).build()</a>
-<a class="sourceLine" id="cb13-50" title="50"></a>
-<a class="sourceLine" id="cb13-51" title="51"><span class="im">import</span> numpy <span class="im">as</span> np</a>
-<a class="sourceLine" id="cb13-52" title="52"></a>
-<a class="sourceLine" id="cb13-53" title="53">mf <span class="op">=</span> cl.mem_flags</a>
-<a class="sourceLine" id="cb13-54" title="54">xr <span class="op">=</span> np.arange(<span class="dv">16</span>, dtype<span class="op">=</span><span class="st">&#39;float32&#39;</span>)</a>
-<a class="sourceLine" id="cb13-55" title="55">xi <span class="op">=</span> np.zeros(<span class="dv">16</span>, dtype<span class="op">=</span><span class="st">&#39;float32&#39;</span>)</a>
-<a class="sourceLine" id="cb13-56" title="56">xr_g <span class="op">=</span> cl.Buffer(ctx, mf.READ_ONLY <span class="op">|</span> mf.COPY_HOST_PTR, hostbuf<span class="op">=</span>xr)</a>
-<a class="sourceLine" id="cb13-57" title="57">xi_g <span class="op">=</span> cl.Buffer(ctx, mf.READ_ONLY <span class="op">|</span> mf.COPY_HOST_PTR, hostbuf<span class="op">=</span>xi)</a>
-<a class="sourceLine" id="cb13-58" title="58">yr_g <span class="op">=</span> cl.Buffer(ctx, mf.WRITE_ONLY, xr.nbytes)</a>
-<a class="sourceLine" id="cb13-59" title="59">yi_g <span class="op">=</span> cl.Buffer(ctx, mf.WRITE_ONLY, xi.nbytes)</a>
-<a class="sourceLine" id="cb13-60" title="60"></a>
-<a class="sourceLine" id="cb13-61" title="61">prg.fft(</a>
-<a class="sourceLine" id="cb13-62" title="62">    queue, (<span class="dv">1</span>,), <span class="va">None</span>, xr_g, xi_g, yr_g, yi_g,</a>
-<a class="sourceLine" id="cb13-63" title="63">    np.int32(<span class="dv">1</span>), np.int32(<span class="dv">1</span>), np.int32(<span class="dv">1</span>), np.int32(<span class="dv">32</span>), np.int32(<span class="dv">32</span>))</a>
-<a class="sourceLine" id="cb13-64" title="64">    </a>
-<a class="sourceLine" id="cb13-65" title="65">yr <span class="op">=</span> np.zeros(<span class="dv">16</span>, dtype<span class="op">=</span><span class="st">&#39;float32&#39;</span>)</a>
-<a class="sourceLine" id="cb13-66" title="66">yi <span class="op">=</span> np.zeros(<span class="dv">16</span>, dtype<span class="op">=</span><span class="st">&#39;float32&#39;</span>)</a>
-<a class="sourceLine" id="cb13-67" title="67">cl.enqueue_copy(queue, yr, yr_g)</a>
-<a class="sourceLine" id="cb13-68" title="68">cl.enqueue_copy(queue, yi, yi_g)</a>
-<a class="sourceLine" id="cb13-69" title="69"></a>
-<a class="sourceLine" id="cb13-70" title="70"><span class="bu">print</span>(yr <span class="op">+</span> 1j<span class="op">*</span>yi)</a></code></pre></div>
+<p>The declaration of the OpenCL <code>notw</code> kernel looks like</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode opencl"><code class="sourceCode opencl"><a class="sourceLine" id="cb17-1" title="1"><span class="kw">__kernel</span> <span class="dt">void</span> fft</a>
+<a class="sourceLine" id="cb17-2" title="2">    ( <span class="kw">__global</span> <span class="dt">const</span> R * ri</a>
+<a class="sourceLine" id="cb17-3" title="3">    , <span class="kw">__global</span> R * ro</a>
+<a class="sourceLine" id="cb17-4" title="4">    , stride is, stride os</a>
+<a class="sourceLine" id="cb17-5" title="5">    , INT v, INT ivs, INT ovs)</a></code></pre></div>
+<p>The same for the <code>twiddle</code> kernel</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode opencl"><code class="sourceCode opencl"><a class="sourceLine" id="cb18-1" title="1"><span class="kw">__kernel</span> <span class="dt">void</span> fft</a>
+<a class="sourceLine" id="cb18-2" title="2">    ( <span class="kw">__global</span> R * ri</a>
+<a class="sourceLine" id="cb18-3" title="3">    , <span class="kw">__constant</span> R * W</a>
+<a class="sourceLine" id="cb18-4" title="4">    , stride rs</a>
+<a class="sourceLine" id="cb18-5" title="5">    , INT mb, INT me, INT ms)</a></code></pre></div>
+<p>To call this kernel (and the twiddle variant) we write another kernel that calls them with the correct strides.</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="cb19-1" title="1"><span class="im">import</span> pyopencl <span class="im">as</span> cl</a>
+<a class="sourceLine" id="cb19-2" title="2"><span class="im">import</span> os</a>
+<a class="sourceLine" id="cb19-3" title="3"><span class="im">from</span> copy <span class="im">import</span> copy</a>
+<a class="sourceLine" id="cb19-4" title="4"></a>
+<a class="sourceLine" id="cb19-5" title="5"><span class="im">from</span> .codelets <span class="im">import</span> (generate_codelet, indent_code, default_config, run)</a>
+<a class="sourceLine" id="cb19-6" title="6"><span class="im">from</span> .parse_c_header <span class="im">import</span> (parse_c_function_decl, opencl_fun_decl, ParseException)</a>
+<a class="sourceLine" id="cb19-7" title="7"><span class="im">from</span> .fft <span class="im">import</span> make_twiddle</a>
+<a class="sourceLine" id="cb19-8" title="8"><span class="im">import</span> noodles</a>
+<a class="sourceLine" id="cb19-9" title="9"></a>
+<a class="sourceLine" id="cb19-10" title="10"><span class="op">&lt;&lt;</span>opencl<span class="op">-</span>macros<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb19-11" title="11"><span class="op">&lt;&lt;</span>opencl<span class="op">-</span>twiddle<span class="op">-</span>const<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb19-12" title="12"><span class="op">&lt;&lt;</span>opencl<span class="op">-</span>two<span class="op">-</span>stage<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb19-13" title="13"><span class="op">&lt;&lt;</span>opencl<span class="op">-</span>test<span class="op">-</span>program<span class="op">&gt;&gt;</span></a></code></pre></div>
+<h3 id="opencl-macros">OpenCL Macros</h3>
+<p>In stead of including the header file that we defined for the C version, we’ll revert to the use of some simple macros to make the code compile.</p>
+<p><em>«opencl-macros»=</em></p>
+<div class="sourceCode" id="opencl-macros"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="opencl-macros-1" title="1">macros <span class="op">=</span> {</a>
+<a class="sourceLine" id="opencl-macros-2" title="2">    <span class="st">&quot;R&quot;</span>: <span class="st">&quot;float&quot;</span>,</a>
+<a class="sourceLine" id="opencl-macros-3" title="3">    <span class="st">&quot;E&quot;</span>: <span class="st">&quot;R&quot;</span>,</a>
+<a class="sourceLine" id="opencl-macros-4" title="4">    <span class="st">&quot;stride&quot;</span>: <span class="st">&quot;int&quot;</span>,</a>
+<a class="sourceLine" id="opencl-macros-5" title="5">    <span class="st">&quot;INT&quot;</span>: <span class="st">&quot;int&quot;</span>,</a>
+<a class="sourceLine" id="opencl-macros-6" title="6">    <span class="st">&quot;K(x)&quot;</span>: <span class="st">&quot;((E) x)&quot;</span>,</a>
+<a class="sourceLine" id="opencl-macros-7" title="7">    <span class="st">&quot;DK(name,value)&quot;</span>: <span class="st">&quot;const E name = K(value)&quot;</span>,</a>
+<a class="sourceLine" id="opencl-macros-8" title="8">    <span class="st">&quot;WS(s,i)&quot;</span>: <span class="st">&quot;s*i&quot;</span>,</a>
+<a class="sourceLine" id="opencl-macros-9" title="9">    <span class="st">&quot;MAKE_VOLATILE_STRIDE(x,y)&quot;</span>: <span class="st">&quot;0&quot;</span>,</a>
+<a class="sourceLine" id="opencl-macros-10" title="10">    <span class="st">&quot;FMA(a,b,c)&quot;</span>: <span class="st">&quot;a * b + c&quot;</span>,</a>
+<a class="sourceLine" id="opencl-macros-11" title="11">    <span class="st">&quot;FMS(a,b,c)&quot;</span>: <span class="st">&quot;a * b - c&quot;</span>,</a>
+<a class="sourceLine" id="opencl-macros-12" title="12">    <span class="st">&quot;FNMA(a,b,c)&quot;</span>: <span class="st">&quot;-a * b - c&quot;</span>,</a>
+<a class="sourceLine" id="opencl-macros-13" title="13">    <span class="st">&quot;FNMS(a,b,c)&quot;</span>: <span class="st">&quot;-a * b + c&quot;</span></a>
+<a class="sourceLine" id="opencl-macros-14" title="14">}</a>
+<a class="sourceLine" id="opencl-macros-15" title="15"></a>
+<a class="sourceLine" id="opencl-macros-16" title="16"></a>
+<a class="sourceLine" id="opencl-macros-17" title="17"><span class="kw">def</span> macros_to_code(m):</a>
+<a class="sourceLine" id="opencl-macros-18" title="18">    <span class="cf">return</span> <span class="st">&quot;</span><span class="ch">\n</span><span class="st">&quot;</span>.join(<span class="st">&quot;#define </span><span class="sc">{}</span><span class="st"> </span><span class="sc">{}</span><span class="st">&quot;</span>.<span class="bu">format</span>(k, v) <span class="cf">for</span> k, v <span class="kw">in</span> macros.items())</a></code></pre></div>
+<h3 id="twiddle-factors">Twiddle factors</h3>
+<p>Twiddle factors are expanded into a one-dimensional array of floats. This array resides in the <code>__constant</code> namespace.</p>
+<p><em>«opencl-twiddle-const»=</em></p>
+<div class="sourceCode" id="opencl-twiddle-const"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="opencl-twiddle-const-1" title="1"><span class="kw">def</span> twiddle_const(n1, n2):</a>
+<a class="sourceLine" id="opencl-twiddle-const-2" title="2">    template <span class="op">=</span> <span class="st">&quot;__constant float twiddle_</span><span class="sc">{n1}</span><span class="st">_</span><span class="sc">{n2}</span><span class="st">[</span><span class="sc">{n}</span><span class="st">] = </span><span class="sc">{{</span><span class="ch">\n</span><span class="sc">{values}</span><span class="ch">\n</span><span class="sc">}}</span><span class="st">;&quot;</span></a>
+<a class="sourceLine" id="opencl-twiddle-const-3" title="3">    twiddles <span class="op">=</span> make_twiddle(n1, n2)[:,<span class="dv">1</span>:].copy()</a>
+<a class="sourceLine" id="opencl-twiddle-const-4" title="4">    <span class="cf">return</span> template.<span class="bu">format</span>(</a>
+<a class="sourceLine" id="opencl-twiddle-const-5" title="5">        n1<span class="op">=</span>n1, n2<span class="op">=</span>n2, n<span class="op">=</span><span class="dv">2</span><span class="op">*</span>n1<span class="op">*</span>(n2<span class="dv">-1</span>),</a>
+<a class="sourceLine" id="opencl-twiddle-const-6" title="6">        values<span class="op">=</span><span class="st">&quot;, &quot;</span>.join(<span class="bu">map</span>(<span class="bu">str</span>, twiddles.view(<span class="st">&#39;float32&#39;</span>).flatten())))</a></code></pre></div>
+<h3 id="two-stage-fft">Two stage FFT</h3>
+<p>The two-stage Cooley-Tukey FFT kernel has the following template:</p>
+<p><em>«opencl-two-stage-template»=</em></p>
+<div class="sourceCode" id="opencl-two-stage-template"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="opencl-two-stage-template-1" title="1">two_stage_template <span class="op">=</span> <span class="st">&quot;&quot;&quot;</span></a>
+<a class="sourceLine" id="opencl-two-stage-template-2" title="2"><span class="st">__kernel void fft</span><span class="sc">{n}</span></a>
+<a class="sourceLine" id="opencl-two-stage-template-3" title="3"><span class="st">    ( __global const float *ci</span></a>
+<a class="sourceLine" id="opencl-two-stage-template-4" title="4"><span class="st">    , __global float *co )</span></a>
+<a class="sourceLine" id="opencl-two-stage-template-5" title="5"><span class="sc">{{</span></a>
+<a class="sourceLine" id="opencl-two-stage-template-6" title="6"><span class="st">    notw</span><span class="sc">{n1}</span><span class="st">(ci, co, </span><span class="sc">{n2s}</span><span class="st">, 2, </span><span class="sc">{n2}</span><span class="st">, 2, </span><span class="sc">{n1s}</span><span class="st">);</span></a>
+<a class="sourceLine" id="opencl-two-stage-template-7" title="7"><span class="st">    twiddle</span><span class="sc">{n2}</span><span class="st">(co, twiddle_</span><span class="sc">{n1}</span><span class="st">_</span><span class="sc">{n2}</span><span class="st">, </span><span class="sc">{n1s}</span><span class="st">, 0, </span><span class="sc">{n1}</span><span class="st">, 2);</span></a>
+<a class="sourceLine" id="opencl-two-stage-template-8" title="8"><span class="sc">}}</span></a>
+<a class="sourceLine" id="opencl-two-stage-template-9" title="9"><span class="st">&quot;&quot;&quot;</span></a></code></pre></div>
+<p>Here <code>n1</code> and <code>n2</code> are the respective factors of the total size <span class="math inline">\(n = n_1 n_2\)</span>. The strides are given for pointers to <code>float</code>, so there we have to multiply the numbers by 2.</p>
+<p>The <code>two_stage_kernel</code> function returns a Noodles promise, scheduling the use of GenFFT.</p>
+<p><em>«opencl-two-stage»=</em></p>
+<div class="sourceCode" id="opencl-two-stage"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="opencl-two-stage-1" title="1"><span class="op">&lt;&lt;</span>opencl<span class="op">-</span>two<span class="op">-</span>stage<span class="op">-</span>template<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="opencl-two-stage-2" title="2"></a>
+<a class="sourceLine" id="opencl-two-stage-3" title="3"><span class="at">@noodles.schedule</span></a>
+<a class="sourceLine" id="opencl-two-stage-4" title="4"><span class="kw">def</span> two_stage_kernel(cfg, n1, n2):</a>
+<a class="sourceLine" id="opencl-two-stage-5" title="5">    k1_p <span class="op">=</span> indent_code(generate_codelet(</a>
+<a class="sourceLine" id="opencl-two-stage-6" title="6">        cfg, <span class="st">&quot;notw_complex&quot;</span>, n<span class="op">=</span>n1, name<span class="op">=</span><span class="st">&quot;notw</span><span class="sc">{}</span><span class="st">&quot;</span>.<span class="bu">format</span>(n1), opencl<span class="op">=</span><span class="va">True</span>))</a>
+<a class="sourceLine" id="opencl-two-stage-7" title="7">    k2_p <span class="op">=</span> indent_code(generate_codelet(</a>
+<a class="sourceLine" id="opencl-two-stage-8" title="8">        cfg, <span class="st">&quot;twiddle_complex&quot;</span>, n<span class="op">=</span>n2, name<span class="op">=</span><span class="st">&quot;twiddle</span><span class="sc">{}</span><span class="st">&quot;</span>.<span class="bu">format</span>(n2), opencl<span class="op">=</span><span class="va">True</span>))</a>
+<a class="sourceLine" id="opencl-two-stage-9" title="9">    k3 <span class="op">=</span> two_stage_template.<span class="bu">format</span>(n<span class="op">=</span>n1<span class="op">*</span>n2, n1<span class="op">=</span>n1, n2<span class="op">=</span>n2, n1s<span class="op">=</span><span class="dv">2</span><span class="op">*</span>n1, n2s<span class="op">=</span><span class="dv">2</span><span class="op">*</span>n2)</a>
+<a class="sourceLine" id="opencl-two-stage-10" title="10">    <span class="cf">return</span> noodles.schedule(<span class="st">&quot;</span><span class="ch">\n\n</span><span class="st">&quot;</span>.join)(noodles.gather(</a>
+<a class="sourceLine" id="opencl-two-stage-11" title="11">        macros_to_code(macros),</a>
+<a class="sourceLine" id="opencl-two-stage-12" title="12">        indent_code(twiddle_const(n1, n2)),</a>
+<a class="sourceLine" id="opencl-two-stage-13" title="13">        k1_p,</a>
+<a class="sourceLine" id="opencl-two-stage-14" title="14">        k2_p,</a>
+<a class="sourceLine" id="opencl-two-stage-15" title="15">        k3))</a></code></pre></div>
+<h3 id="test-program">Test program</h3>
+<p>This test program runs the two-stage kernel for a single array.</p>
+<p><em>«opencl-test-program»=</em></p>
+<div class="sourceCode" id="opencl-test-program"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="opencl-test-program-1" title="1"><span class="cf">if</span> <span class="va">__name__</span> <span class="op">==</span> <span class="st">&quot;__main__&quot;</span>:</a>
+<a class="sourceLine" id="opencl-test-program-2" title="2">    <span class="im">import</span> numpy <span class="im">as</span> np</a>
+<a class="sourceLine" id="opencl-test-program-3" title="3"></a>
+<a class="sourceLine" id="opencl-test-program-4" title="4">    cfg <span class="op">=</span> copy(default_config)</a>
+<a class="sourceLine" id="opencl-test-program-5" title="5">    ctx <span class="op">=</span> cl.create_some_context()</a>
+<a class="sourceLine" id="opencl-test-program-6" title="6">    queue <span class="op">=</span> cl.CommandQueue(ctx)</a>
+<a class="sourceLine" id="opencl-test-program-7" title="7">    code <span class="op">=</span> run(two_stage_kernel(cfg, <span class="dv">3</span>, <span class="dv">4</span>))</a>
+<a class="sourceLine" id="opencl-test-program-8" title="8">    <span class="bu">print</span>(code)</a>
+<a class="sourceLine" id="opencl-test-program-9" title="9">    prg <span class="op">=</span> cl.Program(ctx, code).build()</a>
+<a class="sourceLine" id="opencl-test-program-10" title="10"></a>
+<a class="sourceLine" id="opencl-test-program-11" title="11">    mf <span class="op">=</span> cl.mem_flags</a>
+<a class="sourceLine" id="opencl-test-program-12" title="12">    x <span class="op">=</span> np.arange(<span class="dv">12</span>, dtype<span class="op">=</span><span class="st">&#39;complex64&#39;</span>)</a>
+<a class="sourceLine" id="opencl-test-program-13" title="13">    x_g <span class="op">=</span> cl.Buffer(ctx, mf.READ_ONLY <span class="op">|</span> mf.COPY_HOST_PTR, hostbuf<span class="op">=</span>x)</a>
+<a class="sourceLine" id="opencl-test-program-14" title="14">    y_g <span class="op">=</span> cl.Buffer(ctx, mf.WRITE_ONLY, x.nbytes)</a>
+<a class="sourceLine" id="opencl-test-program-15" title="15"></a>
+<a class="sourceLine" id="opencl-test-program-16" title="16">    prg.fft12(</a>
+<a class="sourceLine" id="opencl-test-program-17" title="17">        queue, (<span class="dv">1</span>,), (<span class="dv">1</span>,), x_g, y_g)</a>
+<a class="sourceLine" id="opencl-test-program-18" title="18"></a>
+<a class="sourceLine" id="opencl-test-program-19" title="19">    y <span class="op">=</span> np.zeros_like(x)</a>
+<a class="sourceLine" id="opencl-test-program-20" title="20">    cl.enqueue_copy(queue, y, y_g)</a>
+<a class="sourceLine" id="opencl-test-program-21" title="21"></a>
+<a class="sourceLine" id="opencl-test-program-22" title="22">    <span class="bu">print</span>(<span class="st">&quot;// fft([0..12]) = </span><span class="ch">\n</span><span class="st">// &quot;</span>, <span class="st">&quot;</span><span class="ch">\n</span><span class="st">//  &quot;</span>.join(<span class="bu">str</span>(y).splitlines()))</a>
+<a class="sourceLine" id="opencl-test-program-23" title="23">    <span class="bu">print</span>(<span class="st">&quot;// abserr = &quot;</span>, np.<span class="bu">abs</span>(y <span class="op">-</span> np.fft.fft(np.arange(<span class="dv">12</span>))).<span class="bu">max</span>())</a></code></pre></div>
 <h2 id="cooley-tukey-algorithm">Cooley-Tukey algorithm</h2>
 <p>(sampled from Frigo 1999. I changed array indices to <span class="math inline">\(k, l, m\)</span>, <span class="math inline">\(n\)</span> denoting the length of the array.)</p>
 <p>The (forward) discrete Fourier transform of <span class="math inline">\(X\)</span> is the array <span class="math inline">\(Y\)</span> given by</p>
@@ -726,6 +842,33 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <a class="sourceLine" id="load-twiddle-codelet-22" title="22">            input_strides[<span class="op">-</span><span class="dv">1</span>], <span class="dv">0</span>, n, input_strides[<span class="dv">0</span>])</a>
 <a class="sourceLine" id="load-twiddle-codelet-23" title="23"></a>
 <a class="sourceLine" id="load-twiddle-codelet-24" title="24">    <span class="cf">return</span> fft_twiddle</a></code></pre></div>
+<h4 id="twiddle-complex-codelet">Twiddle-complex codelet</h4>
+<p><em>«load-twiddle-complex-codelet»=</em></p>
+<div class="sourceCode" id="load-twiddle-complex-codelet"><pre class="sourceCode python"><code class="sourceCode python"><a class="sourceLine" id="load-twiddle-complex-codelet-1" title="1"><span class="kw">def</span> load_twiddle_complex_codelet(shared_object, function_name, dtype, radix):</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-2" title="2">    signature <span class="op">=</span> codelet_signatures[<span class="st">&quot;twiddle_complex&quot;</span>]</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-3" title="3">    <span class="op">&lt;&lt;</span>load<span class="op">-</span>function<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-4" title="4"></a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-5" title="5">    <span class="kw">def</span> fft_twiddle(input_array, twiddle_factors):</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-6" title="6">        <span class="cf">if</span> dtype <span class="op">==</span> <span class="st">&#39;float32&#39;</span>:</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-7" title="7">            <span class="cf">assert</span>(input_array.dtype <span class="op">==</span> <span class="st">&#39;complex64&#39;</span>)</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-8" title="8">        <span class="cf">if</span> dtype <span class="op">==</span> <span class="st">&#39;float64&#39;</span>:</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-9" title="9">            <span class="cf">assert</span>(input_array.dtype <span class="op">==</span> <span class="st">&#39;complex128&#39;</span>)</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-10" title="10">        <span class="op">&lt;&lt;</span>shape<span class="op">-</span>assertions<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-11" title="11"></a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-12" title="12">        n_w <span class="op">=</span> radix <span class="op">-</span> <span class="dv">1</span></a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-13" title="13">        <span class="cf">assert</span>(input_array.dtype <span class="op">==</span> twiddle_factors.dtype)</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-14" title="14">        <span class="cf">if</span> input_array.ndim <span class="op">==</span> <span class="dv">1</span>:</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-15" title="15">            <span class="cf">assert</span>(twiddle_factors.shape <span class="op">==</span> (n_w,))</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-16" title="16">        <span class="cf">else</span>:</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-17" title="17">            <span class="cf">assert</span>(twiddle_factors.shape <span class="op">==</span> (input_array.shape[<span class="dv">0</span>], n_w))</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-18" title="18"></a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-19" title="19">        <span class="op">&lt;&lt;</span><span class="bu">input</span><span class="op">-</span>strides<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-20" title="20">        <span class="bu">print</span>(<span class="st">&quot;twiddle </span><span class="sc">{}</span><span class="st"> </span><span class="sc">{}</span><span class="st"> </span><span class="sc">{}</span><span class="st">&quot;</span>.<span class="bu">format</span>(radix, n, input_strides))</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-21" title="21">        fun(input_array.ctypes.data,</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-22" title="22">            twiddle_factors.ctypes.data,</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-23" title="23">            input_strides[<span class="op">-</span><span class="dv">1</span>], <span class="dv">0</span>, n, input_strides[<span class="dv">0</span>])</a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-24" title="24"></a>
+<a class="sourceLine" id="load-twiddle-complex-codelet-25" title="25">    <span class="cf">return</span> fft_twiddle</a></code></pre></div>
 <h3 id="making-a-larger-transform">Making a larger transform</h3>
 <p>The basis of Cooley-Tukey algorithm is to split the computation of the full Fourier transform into two parts. Say the length of the array is <span class="math inline">\(r = nm\)</span>. We then first perform <span class="math inline">\(n\)</span> radix <span class="math inline">\(m\)</span> transforms, multiply the output by twiddle factors <span class="math inline">\(w_r^{kl}\)</span> and then do <span class="math inline">\(m\)</span> radix <span class="math inline">\(n\)</span> transforms. Here</p>
 <p><span class="math display">\[w_n = \exp\left(\frac{2\pi i}{n}\right).\]</span></p>
@@ -770,12 +913,12 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <a class="sourceLine" id="fft-two-factor-twiddle-11" title="11"></a>
 <a class="sourceLine" id="fft-two-factor-twiddle-12" title="12">    <span class="cf">return</span> fft</a></code></pre></div>
 <h3 id="module">Module</h3>
-<div class="sourceCode" id="cb14"><pre class="sourceCode py"><code class="sourceCode python"><a class="sourceLine" id="cb14-1" title="1"><span class="im">from</span> .codelets <span class="im">import</span> (</a>
-<a class="sourceLine" id="cb14-2" title="2">    generate_fft, default_config)</a>
-<a class="sourceLine" id="cb14-3" title="3"><span class="im">import</span> numpy <span class="im">as</span> np</a>
-<a class="sourceLine" id="cb14-4" title="4"></a>
-<a class="sourceLine" id="cb14-5" title="5"><span class="op">&lt;&lt;</span>twiddle<span class="op">-</span>factors<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb14-6" title="6"><span class="op">&lt;&lt;</span>fft<span class="op">-</span>two<span class="op">-</span>factor<span class="op">&gt;&gt;</span></a>
-<a class="sourceLine" id="cb14-7" title="7"><span class="op">&lt;&lt;</span>fft<span class="op">-</span>two<span class="op">-</span>factor<span class="op">-</span>twiddle<span class="op">&gt;&gt;</span></a></code></pre></div>
+<div class="sourceCode" id="cb20"><pre class="sourceCode py"><code class="sourceCode python"><a class="sourceLine" id="cb20-1" title="1"><span class="im">from</span> .codelets <span class="im">import</span> (</a>
+<a class="sourceLine" id="cb20-2" title="2">    generate_fft, default_config)</a>
+<a class="sourceLine" id="cb20-3" title="3"><span class="im">import</span> numpy <span class="im">as</span> np</a>
+<a class="sourceLine" id="cb20-4" title="4"></a>
+<a class="sourceLine" id="cb20-5" title="5"><span class="op">&lt;&lt;</span>twiddle<span class="op">-</span>factors<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb20-6" title="6"><span class="op">&lt;&lt;</span>fft<span class="op">-</span>two<span class="op">-</span>factor<span class="op">&gt;&gt;</span></a>
+<a class="sourceLine" id="cb20-7" title="7"><span class="op">&lt;&lt;</span>fft<span class="op">-</span>two<span class="op">-</span>factor<span class="op">-</span>twiddle<span class="op">&gt;&gt;</span></a></code></pre></div>
 </body>
 </html>
