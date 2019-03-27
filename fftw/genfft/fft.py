@@ -42,4 +42,36 @@ def fft_two_factor_twiddle(config, n, m):
 
     return fft
 ## ------ end
+## ------ begin <<fft-full-factor>>[0]
+def n_factor_fft(config, ns):
+    if len(ns) == 1:
+        return generate_fft(config, "notw", n=ns[0])
+
+    n = np.prod(ns[1:])
+    m = ns[0]
+    fft_n = n_factor_fft(config, ns[1:])
+    fft_m = generate_fft(config, "twiddle", n=m)
+    W = make_twiddle(n, m)[:,1:].copy()
+    
+    def fft(x, y):
+        for i in range(x.shape[0]):
+            z = y[i].reshape([m, n])
+            fft_n(x[i].reshape([n, m]).T, z)
+            fft_m(z.T, W)
+
+    return fft
+## ------ end
+## ------ begin <<fft-full-factor>>[1]
+def full_factor_fft(config, n):
+    from sympy.ntheory import factorint
+    factors = sum(([k] * v for k, v in factorint(n).items()), [])
+
+    _fft = n_factor_fft(config, factors)    
+    def fft(x):
+        y = np.zeros_like(x)
+        _fft(x[None,:], y[None,:])
+        return y
+    
+    return fft
+## ------ end
 ## ------ end

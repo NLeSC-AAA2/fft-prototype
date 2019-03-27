@@ -2,4 +2,4 @@ pyopencl
 pyparsing
 noodles
 numpy
-
+sympy

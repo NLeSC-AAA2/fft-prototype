@@ -159,9 +159,52 @@ def fft_two_factor_twiddle(config, n, m):
     return fft
 ```
 
+## Creating arbitrary FFT
+
+Using the basic algorithm of a two stage FFT we can expand to any list of factors, and construct an arbitary length FFT algorithm. This has a for-loop in Python and $log(n)$ recursion.
+
+``` {.python #fft-full-factor}
+def n_factor_fft(config, ns):
+    if len(ns) == 1:
+        return generate_fft(config, "notw", n=ns[0])
+
+    n = np.prod(ns[1:])
+    m = ns[0]
+    fft_n = n_factor_fft(config, ns[1:])
+    fft_m = generate_fft(config, "twiddle", n=m)
+    W = make_twiddle(n, m)[:,1:].copy()
+    
+    def fft(x, y):
+        for i in range(x.shape[0]):
+            z = y[i].reshape([m, n])
+            fft_n(x[i].reshape([n, m]).T, z)
+            fft_m(z.T, W)
+
+    return fft
+```
+
+Note that the for-loop could be executed in parallel without problem. Using NumPy arrays we can log every call to the codelets and generate a series of commands that generate the correctly strided calls, including annotation on what can be done in parallel.
+
+Using the `n_factor_fft` function we can create an easy wrapper that creates an arbitrary length FFT.
+
+``` {.python #fft-full-factor}
+def full_factor_fft(config, n):
+    from sympy.ntheory import factorint
+    factors = sum(([k] * v for k, v in factorint(n).items()), [])
+
+    _fft = n_factor_fft(config, factors)    
+    def fft(x):
+        y = np.zeros_like(x)
+        _fft(x[None,:], y[None,:])
+        return y
+    
+    return fft
+```
+
+
 ## Module
 
-``` {.py file=genfft/fft.py}
+``` {.python file=genfft/fft.py}
 from .codelets import (
     generate_fft, default_config)
 import numpy as np
@@ -169,4 +212,5 @@ import numpy as np
 <<twiddle-factors>>
 <<fft-two-factor>>
 <<fft-two-factor-twiddle>>
+<<fft-full-factor>>
 ```
