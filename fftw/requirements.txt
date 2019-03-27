@@ -1,0 +1,5 @@
+pyopencl
+pyparsing
+noodles
+numpy
+

@@ -3,17 +3,12 @@ import pyopencl as cl
 import os
 from copy import copy
 
-from codelets import (generate_codelet, indent_code, default_config)
-from noodles.run.single.vanilla import run_single
-from parse_c_header import (parse_c_function_decl, opencl_fun_decl, ParseException)
-import numpy as np
+from .codelets import (generate_codelet, indent_code, default_config, run)
+from .parse_c_header import (parse_c_function_decl, opencl_fun_decl, ParseException)
+from .fft import make_twiddle
+import noodles
 
-cfg = copy(default_config)
-ctx = cl.create_some_context()
-queue = cl.CommandQueue(ctx)
-print("Running on: ", ctx.devices[0].name)
-
-
+## ------ begin <<opencl-macros>>[0]
 macros = {
     "R": "float",
     "E": "R",
@@ -29,65 +24,68 @@ macros = {
     "FNMS(a,b,c)": "-a * b + c"
 }
 
-def macros_to_options(m):
-    return sum([["-D", k + "=" + v] for k, v in macros.items()], [])
 
 def macros_to_code(m):
     return "\n".join("#define {} {}".format(k, v) for k, v in macros.items())
-
-c16 = run_single(generate_codelet(
-    cfg, "notw_complex", n=16, name="notw16", opencl=True))
-c24 = run_single(generate_codelet(
-    cfg, "twiddle_complex", n=24, name="twiddle24", opencl=True))
-
-ct384 = """
-__kernel void fft384
+## ------ end
+## ------ begin <<opencl-twiddle-const>>[0]
+def twiddle_const(n1, n2):
+    template = "__constant float twiddle_{n1}_{n2}[{n}] = {{\n{values}\n}};"
+    twiddles = make_twiddle(n1, n2)[:,1:].copy()
+    return template.format(
+        n1=n1, n2=n2, n=2*n1*(n2-1),
+        values=", ".join(map(str, twiddles.view('float32').flatten())))
+## ------ end
+## ------ begin <<opencl-two-stage>>[0]
+## ------ begin <<opencl-two-stage-template>>[0]
+two_stage_template = """
+__kernel void fft{n}
     ( __global const float *ci
     , __global float *co )
-{
-    notw16(ci, co, 48, 2, 24, 2, 32);
-    twiddle24(co, twiddle_16_24, 32, 0, 16, 2);
-}
+{{
+    notw{n1}(ci, co, {n2s}, 2, {n2}, 2, {n1s});
+    twiddle{n2}(co, twiddle_{n1}_{n2}, {n1s}, 0, {n1}, 2);
+}}
 """
+## ------ end
 
-def w(k, n):
-    return np.exp(2j * np.pi * k / n)
+@noodles.schedule
+def two_stage_kernel(cfg, n1, n2):
+    k1_p = indent_code(generate_codelet(
+        cfg, "notw_complex", n=n1, name="notw{}".format(n1), opencl=True))
+    k2_p = indent_code(generate_codelet(
+        cfg, "twiddle_complex", n=n2, name="twiddle{}".format(n2), opencl=True))
+    k3 = two_stage_template.format(n=n1*n2, n1=n1, n2=n2, n1s=2*n1, n2s=2*n2)
+    return noodles.schedule("\n\n".join)(noodles.gather(
+        macros_to_code(macros),
+        indent_code(twiddle_const(n1, n2)),
+        k1_p,
+        k2_p,
+        k3))
+## ------ end
+## ------ begin <<opencl-test-program>>[0]
+if __name__ == "__main__":
+    import numpy as np
 
-def make_twiddle(n1, n2):
-    I1 = np.arange(n1)
-    I2 = np.arange(n2)
-    return w(I1[:,None] * I2[None,:], n1*n2).astype('complex64')
+    cfg = copy(default_config)
+    ctx = cl.create_some_context()
+    queue = cl.CommandQueue(ctx)
+    code = run(two_stage_kernel(cfg, 3, 4))
+    print(code)
+    prg = cl.Program(ctx, code).build()
 
+    mf = cl.mem_flags
+    x = np.arange(12, dtype='complex64')
+    x_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=x)
+    y_g = cl.Buffer(ctx, mf.WRITE_ONLY, x.nbytes)
 
-def twiddle_const(n1, n2):
-    twiddles = make_twiddle(n1, n2)[:,1:].copy()
-    return "__constant float twiddle_{n1}_{n2}[{n}] = {{\n    {values}\n}};".format(
-        n1=n1, n2=n2, n=2*n1*(n2-1), values=", ".join(map(str, twiddles.view('float32').flatten())))
+    prg.fft12(
+        queue, (1,), (1,), x_g, y_g)
 
-opencl_code = "\n".join([
-    macros_to_code(macros),
-    twiddle_const(16, 24),
-    c16,
-    c24,
-    ct384])
+    y = np.zeros_like(x)
+    cl.enqueue_copy(queue, y, y_g)
 
-print(opencl_code)
-
-prg = cl.Program(ctx, opencl_code).build()
-
-import numpy as np
-
-mf = cl.mem_flags
-x = np.arange(384, dtype='complex64')
-x_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=x)
-y_g = cl.Buffer(ctx, mf.WRITE_ONLY, x.nbytes)
-
-prg.fft384(
-    queue, (1,), (1,), x_g, y_g)
-
-y = np.zeros_like(x)
-cl.enqueue_copy(queue, y, y_g)
-
-print(y)
-print(np.abs(y - np.fft.fft(x)).max())
+    print("// fft([0..12]) = \n// ", "\n//  ".join(str(y).splitlines()))
+    print("// abserr = ", np.abs(y - np.fft.fft(np.arange(12))).max())
+## ------ end
 ## ------ end
