@@ -1,31 +1,39 @@
 ## ------ language="Python" file="genfft/plan.py"
-import noodles
 from typing import NamedTuple
-
+from functools import reduce
+import operator
 
 class PointerOffset(NamedTuple):
     name: str
     offset: int
 
     def __str__(self):
-        return "{} + {}".format(self.name, self.offset)
+        if self.offset == 0:
+            return self.name
+        else:
+            return "{} + {}".format(self.name, self.offset)
 
 
 def calc_stride(shape, s=1):
     if len(shape) == 0:
         return tuple()
     else:
-        return calc_stride(shape[:-1], s*[shape[-1]]) + (s,)
+        return calc_stride(shape[:-1], s*shape[-1]) + (s,)
 
 def tails(x):
     return (x[i:] for i in range(len(x)))
 
 def remove(x, i):
-    return (x[j] for j in range(len(x)) if j != i)
+    return x[:i] + x[i+1:]
 
 def replace(x, i, v):
-    return ((x[j], v)[j==i] for j in range(len(x)))
+    return x[:i] + (v,) + x[i+1:]
 
+def insert(x, i, v):
+    return x[:i] + (v,) + x[i:]
+
+def product(x):
+    return reduce(operator.mul, x, 1)
 
 class Array:
     def __init__(self, name, dtype, shape, offset=0, stride=None):
@@ -37,7 +45,7 @@ class Array:
 
     @property
     def ndim(self):
-        return len(shape)
+        return len(self.shape)
 
     @property
     def real(self):
@@ -74,7 +82,7 @@ class Array:
         return Array(self.name, self.dtype, self.shape[::-1], self.offset, self.stride[::-1])
 
     def reshape(self, s):
-        if np.prod(s) != np.prod(self.shape):
+        if product(s) != product(self.shape):
             raise ValueError(
                 "Cannot reshape shape {} to {}, sizes don't match.".format(self.shape, s))
         if self.ndim > 1:
@@ -94,22 +102,31 @@ class Array:
         a, b, s = s.indices(self.shape[d])
         return Array(
             self.name, self.dtype,
-            shape=tuple(replace(self.shape, d, (b - a)//s)),
+            shape=replace(self.shape, d, (b - a)//s),
             offset=self.offset + self.stride[d]*a,
-            stride=tuple(replace(self.stride, d, s * self.stride[d])))
+            stride=replace(self.stride, d, s * self.stride[d]))
+
+    def _extrude(self, d):
+        return Array(
+            self.name, self.dtype,
+            shape=insert(self.shape, d, 1),
+            offset=self.offset,
+            stride=insert(self.stride, d, self.stride[d] * self.shape[d]))
 
     def __getitem__(self, slices):
-        if isinstance(slices, tuple):
+        if not isinstance(slices, tuple):
             slices = (slices,)
         
         x = self
         for i, s in enumerate(slices):
-            if isinstance(s, int):
+            if s is None:
+                x = x._extrude(i)
+            elif isinstance(s, int):
                 x = x._select(i, s)
             elif isinstance(s, slice):
                 x = x._slice(i, s)
             else:
-                raise TypeError("Index needs to be integer or slice")
+                raise TypeError("Index needs to be integer or slice: {}, type: {}".format(s, type(s)))
 
         return x
 
@@ -123,8 +140,7 @@ class Codelet:
         self.prefix = prefix
         self.radix = radix
 
-    @noodles.schedule
-    def __call__(self, args):
+    def __call__(self, *args):
         return "{}_{}({})".format(
             self.prefix, self.radix, ", ".join(map(str, args)))
 
@@ -153,6 +169,7 @@ def plan_notw(dtype, radix):
             input_array.real.stride[0], output_array.real.stride[0])
     return notw
 
+
 def plan_twiddle(dtype, radix):
     def twiddle(input_array, twiddle_factors):
         if dtype == 'float32':
@@ -180,7 +197,8 @@ def plan_twiddle(dtype, radix):
         else:
             n = input_array.shape[0]
 
-        fun(input_array.real.ptr, input_array.imag.ptr,
+        return Codelet("twiddle", radix)(
+            input_array.real.ptr, input_array.imag.ptr,
             twiddle_factors.ptr,
             input_array.real.stride[-1], 0, n, input_array.real.stride[0])
     return twiddle
@@ -188,32 +206,32 @@ def plan_twiddle(dtype, radix):
 
 def n_factor_fft(ns):
     if len(ns) == 1:
-        return plan_notw("float32", n=ns[0])
+        return plan_notw("float32", radix=ns[0])
 
-    n = np.prod(ns[1:])
+    n = product(ns[1:])
     m = ns[0]
-    fft_n = n_factor_fft(config, ns[1:])
-    fft_m = plan_twiddle("float32", n=m)
+    fft_n = n_factor_fft(ns[1:])
+    fft_m = plan_twiddle("float32", radix=m)
     W = Array("twiddle_{}_{}".format(n, m), shape=(n, m-1), dtype='complex64')
     
     def fft(x, y):
+        expr = ['loop',]
         for i in range(x.shape[0]):
             z = y[i].reshape([m, n])
-            fft_n(x[i].reshape([n, m]).T, z)
-            fft_m(z.T, W)
+            expr.append([fft_n(x[i].reshape([n, m]).T, z), fft_m(z.T, W)])
+        return tuple(expr)
 
     return fft
 
 
-def full_factor_fft(config, n):
+def full_factor_fft(n):
     from sympy.ntheory import factorint
     factors = sum(([k] * v for k, v in factorint(n).items()), [])
 
-    _fft = n_factor_fft(config, factors)    
+    _fft = n_factor_fft(factors)    
     def fft(x):
-        y = np.zeros_like(x)
-        _fft(x[None,:], y[None,:])
-        return y
+        y = Array("y", shape=x.shape, dtype=x.dtype)
+        return _fft(x[None,:], y[None,:])
     
     return fft
 ## ------ end
