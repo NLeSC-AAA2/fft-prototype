@@ -158,7 +158,7 @@ let generate n =
     (Printf.sprintf "{\n%s(p, %s, &desc);\n}" register name)
   in
 
-  (unparse tree) ^ "\n" ^ init
+  (unparse tree) ^ "\n" ^ (if !Magic.standalone then "" else init)
 
 
 let main () =
