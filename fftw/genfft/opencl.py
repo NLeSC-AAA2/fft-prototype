@@ -69,9 +69,19 @@ def two_stage_kernel(cfg, n1, n2):
 @noodles.schedule
 def single_stage_r2c(cfg, n1, direction='f', **args):
     k1_p = indent_code(generate_codelet(
-        cfg, "r2c" + direction, n=n1, name="r2c{}_{}".format(direction, n1), opencl=True, **args))
+        cfg, "r2c" + direction, n=n1,
+        name="r2c{}_{}".format(direction, n1),
+        opencl=True, **args))
     return noodles.schedule("\n\n".join)(noodles.gather(
         macros_to_code(macros),
         k1_p))
+## ------ end
+## ------ begin <<opencl-rtc>>[1]
+@noodles.schedule
+def single_stage_hc2hc(cfg, n, **args):
+    k = indent_code(generate_codelet(
+        cfg, "hc2hc", n=n, name="hc2hc_{}".format(n), opencl=True, **args))
+    return noodles.schedule("\n\n".join)(noodles.gather(
+        macros_to_code(macros), k))
 ## ------ end
 ## ------ end

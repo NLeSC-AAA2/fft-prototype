@@ -326,10 +326,25 @@ The real-to-complex FFT takes real input of size `N` and returns complex output 
 @noodles.schedule
 def single_stage_r2c(cfg, n1, direction='f', **args):
     k1_p = indent_code(generate_codelet(
-        cfg, "r2c" + direction, n=n1, name="r2c{}_{}".format(direction, n1), opencl=True, **args))
+        cfg, "r2c" + direction, n=n1,
+        name="r2c{}_{}".format(direction, n1),
+        opencl=True, **args))
     return noodles.schedule("\n\n".join)(noodles.gather(
         macros_to_code(macros),
         k1_p))
+```
+
+## Half-complex transform
+
+To stage a multi-tier transform on the half-complex domain, we need to understand how to twiddle on the half-complex domain.
+
+``` {.python #opencl-rtc}
+@noodles.schedule
+def single_stage_hc2hc(cfg, n, **args):
+    k = indent_code(generate_codelet(
+        cfg, "hc2hc", n=n, name="hc2hc_{}".format(n), opencl=True, **args))
+    return noodles.schedule("\n\n".join)(noodles.gather(
+        macros_to_code(macros), k))
 ```
 
 ``` {.python #test-rtc-one}
