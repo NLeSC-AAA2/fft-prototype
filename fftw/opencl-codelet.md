@@ -202,6 +202,8 @@ import noodles
 <<opencl-twiddle-const>>
 <<opencl-two-stage>>
 <<opencl-test-program>>
+
+<<opencl-rtc>>
 ```
 
 ## OpenCL Macros
@@ -280,19 +282,24 @@ def two_stage_kernel(cfg, n1, n2):
         k3))
 ```
 
-## Test program
+## Test 2-stage fft
 
 This test program runs the two-stage kernel for a single array.
 
-``` {.python #opencl-test-program}
-if __name__ == "__main__":
-    import numpy as np
+``` {.python file=test/test_ocl_two_stage.py}
+import numpy as np
+import pyopencl as cl
 
+from genfft import generate_fft, default_config
+from genfft.opencl import two_stage_kernel, run
+
+from copy import copy
+
+def test_ocl_two_stage_3_4():
     cfg = copy(default_config)
     ctx = cl.create_some_context()
     queue = cl.CommandQueue(ctx)
     code = run(two_stage_kernel(cfg, 3, 4))
-    print(code)
     prg = cl.Program(ctx, code).build()
 
     mf = cl.mem_flags
@@ -308,5 +315,62 @@ if __name__ == "__main__":
 
     print("// fft([0..12]) = \n// ", "\n//  ".join(str(y).splitlines()))
     print("// abserr = ", np.abs(y - np.fft.fft(np.arange(12))).max())
+    assert np.abs(y - np.fft.fft(np.arange(12))).max() < 1e-5
 ```
 
+# Real-to-complex FFT
+
+The real-to-complex FFT takes real input of size `N` and returns complex output of size `N//2`. We first need to test the `gen_r2cf` and `gen_r2cb` codelet generators (`f` and `b` standing for forward and backward).
+
+``` {.python #opencl-rtc}
+@noodles.schedule
+def single_stage_r2c(cfg, n1, direction='f', **args):
+    k1_p = indent_code(generate_codelet(
+        cfg, "r2c" + direction, n=n1, name="r2c{}_{}".format(direction, n1), opencl=True, **args))
+    return noodles.schedule("\n\n".join)(noodles.gather(
+        macros_to_code(macros),
+        k1_p))
+```
+
+``` {.python #test-rtc-one}
+# cfg = copy(default_config)
+# ctx = cl.create_some_context()
+# queue = cl.CommandQueue(ctx)
+
+code = run(single_stage_rtc(cfg, 16))
+prg = cl.Program(ctx, code).build()
+```
+
+## Test
+
+``` {.python file=test/test_ocl_rtc.py}
+import numpy as np
+import pyopencl as cl
+
+from genfft import generate_fft, default_config
+from genfft.opencl import two_stage_kernel, run
+
+from copy import copy
+
+def test_ocl_rtc():
+    cfg = copy(default_config)
+    ctx = cl.create_some_context()
+    queue = cl.CommandQueue(ctx)
+    code = run(two_stage_kernel(cfg, 3, 4))
+    prg = cl.Program(ctx, code).build()
+
+    mf = cl.mem_flags
+    x = np.arange(12, dtype='complex64')
+    x_g = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=x)
+    y_g = cl.Buffer(ctx, mf.WRITE_ONLY, x.nbytes)
+
+    prg.fft12(
+        queue, (1,), (1,), x_g, y_g)
+
+    y = np.zeros_like(x)
+    cl.enqueue_copy(queue, y, y_g)
+
+    print("// fft([0..12]) = \n// ", "\n//  ".join(str(y).splitlines()))
+    print("// abserr = ", np.abs(y - np.fft.fft(np.arange(12))).max())
+    assert np.abs(y - np.fft.fft(np.arange(12))).max() < 1e-5
+```

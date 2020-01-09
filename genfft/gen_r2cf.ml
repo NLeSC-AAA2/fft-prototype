@@ -108,6 +108,15 @@ let generate n =
   let odag = store_array_hc n oloc output in
   let annot = standard_optimizer odag in
 
+  let fun_prefix =
+    if !Magic.opencl then "__kernel " else
+    if !Magic.standalone then "" else "static "
+  and decl_prefix =
+    if !Magic.opencl then "__global " else ""
+  and const_prefix =
+    if !Magic.opencl then "__constant " else ""
+  in
+
   let body = Block (
     [Decl ("INT", i)],
     [For (Expr_assign (CVar i, CVar v),
@@ -127,11 +136,11 @@ let generate n =
   in
 
   let tree =
-    Fcn ((if !Magic.standalone then "void" else "static void"), name,
-	 ([Decl (C.realtypep, ar0);
-	   Decl (C.realtypep, ar1);
-	   Decl (C.realtypep, acr);
-	   Decl (C.realtypep, aci);
+    Fcn ((fun_prefix ^ "void"), name,
+	 ([Decl (decl_prefix ^ C.realtypep, ar0);
+	   Decl (decl_prefix ^ C.realtypep, ar1);
+	   Decl (decl_prefix ^ C.realtypep, acr);
+	   Decl (decl_prefix ^ C.realtypep, aci);
 	   Decl (C.stridetype, rs);
 	   Decl (C.stridetype, csr);
 	   Decl (C.stridetype, csi);
