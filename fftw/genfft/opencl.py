@@ -26,7 +26,13 @@ macros = {
 
 
 def macros_to_code(m):
-    return "\n".join("#define {} {}".format(k, v) for k, v in macros.items())
+    return "\n".join("#define {} {}".format(k, v) for k, v in m.items())
+## ------ end
+## ------ begin <<opencl-macros>>[1]
+int_macros = copy(macros)
+int_macros.update({
+    "R": "int16",
+    "E": "int32" })
 ## ------ end
 ## ------ begin <<opencl-twiddle-const>>[0]
 def twiddle_const(n1, n2):
@@ -77,11 +83,44 @@ def single_stage_r2c(cfg, n1, direction='f', **args):
         k1_p))
 ## ------ end
 ## ------ begin <<opencl-rtc>>[1]
+rtc_two_stage_template = """
+__kernel void fft{n}
+    ( __global const float *ri
+    , __global float *co )
+{{
+    notw{n1}(ri, ri+1, co, co+1, {n2s}, 2, 2, {n2}, 2, {n1s});
+    twiddle{n2}(co, twiddle_{n1}_{n2}, {n1s}, 0, {n1}, 2);
+}}
+"""
+## ------ end
+## ------ begin <<opencl-rtc>>[2]
 @noodles.schedule
-def single_stage_hc2hc(cfg, n, **args):
+def multi_stage_hc2hc(cfg, n1, n2, **args):
+    k1_p = indent_code(generate_codelet(
+        cfg, "r2cf", n=n1,
+        name="notw{}".format(n1),
+        opencl=True, **args))
     k = indent_code(generate_codelet(
-        cfg, "hc2hc", n=n, name="hc2hc_{}".format(n), opencl=True, **args))
+        cfg, "hc2hc", n=n2, name="twiddle{}".format(n2), opencl=True,
+        **args))
     return noodles.schedule("\n\n".join)(noodles.gather(
-        macros_to_code(macros), k))
+        macros_to_code(macros),
+        indent_code(twiddle_const(n1, n2)),
+        k1_p, k))
+## ------ end
+## ------ begin <<opencl-rtc>>[3]
+@noodles.schedule
+def multi_stage_int(cfg, n1, n2, **args):
+    k1_p = indent_code(generate_codelet(
+        cfg, "r2cf", n=n1,
+        name="notw{}".format(n1),
+        opencl=True, **args))
+    k = indent_code(generate_codelet(
+        cfg, "hc2hc", n=n2, name="twiddle{}".format(n2), opencl=True,
+        **args))
+    return noodles.schedule("\n\n".join)(noodles.gather(
+        macros_to_code(int_macros),
+        indent_code(twiddle_const(n1, n2)),
+        k1_p, k))
 ## ------ end
 ## ------ end

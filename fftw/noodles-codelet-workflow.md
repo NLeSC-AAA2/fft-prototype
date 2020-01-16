@@ -138,13 +138,14 @@ def build_shared_object(config, source):
 Once we created a pipeline for building a codelet, we need to run it, in this case using a multi-threaded runner with caching enabled. Also, we need to specify how to serialise objects. Since we only call functions with standard Python objects (strings and lists) `noodles.serial.base` suffices.
 
 ``` {.python #noodles-run}
-from noodles.run.threading.sqlite3 import run_parallel
+from noodles.run.threading.vanilla import run_parallel
 from noodles import serial
 
 def run(wf):
     return run_parallel(
-        wf, registry=serial.base, n_threads=4,
-        db_file="lib/db", echo_log=False)
+        wf, n_threads=4)
+        # registry=serial.base, n_threads=4,
+        # db_file="lib/db", echo_log=False)
 ```
 
 ### Synthesis

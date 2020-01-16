@@ -108,6 +108,16 @@ let generate n =
   and viioarray = CVar iioarray
   and vm = CVar m and vmb = CVar mb and vme = CVar me 
   in
+
+  let fun_prefix =
+    if !Magic.opencl then "__kernel " else
+    if !Magic.standalone then "" else "static "
+  and decl_prefix =
+    if !Magic.opencl then "__global " else ""
+  and const_prefix =
+    if !Magic.opencl then "__constant " else ""
+  in
+
   let body = Block (
     [Decl ("INT", m)],
     [For (list_to_comma
@@ -130,10 +140,10 @@ let generate n =
   in
 
   let tree = 
-    Fcn ("static void", name,
-	 [Decl (C.realtypep, rioarray);
-	  Decl (C.realtypep, iioarray);
-	  Decl (C.constrealtypep, twarray);
+    Fcn (fun_prefix ^ "void", name,
+	 [Decl (decl_prefix ^ C.realtypep, rioarray);
+	  Decl (decl_prefix ^ C.realtypep, iioarray);
+	  Decl (const_prefix ^ C.constrealtypep, twarray);
 	  Decl (C.stridetype, rs);
 	  Decl ("INT", mb);
 	  Decl ("INT", me);

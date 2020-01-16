@@ -303,13 +303,14 @@ def load_twiddle_complex_codelet(shared_object, function_name, dtype, radix):
 ## ------ end
 
 ## ------ begin <<noodles-run>>[0]
-from noodles.run.threading.sqlite3 import run_parallel
+from noodles.run.threading.vanilla import run_parallel
 from noodles import serial
 
 def run(wf):
     return run_parallel(
-        wf, registry=serial.base, n_threads=4,
-        db_file="lib/db", echo_log=False)
+        wf, n_threads=4)
+        # registry=serial.base, n_threads=4,
+        # db_file="lib/db", echo_log=False)
 ## ------ end
 
 def generate_fft(config, variant, **kwargs):

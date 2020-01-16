@@ -228,7 +228,7 @@ macros = {
 
 
 def macros_to_code(m):
-    return "\n".join("#define {} {}".format(k, v) for k, v in macros.items())
+    return "\n".join("#define {} {}".format(k, v) for k, v in m.items())
 ```
 
 ## Twiddle factors
@@ -339,12 +339,31 @@ def single_stage_r2c(cfg, n1, direction='f', **args):
 To stage a multi-tier transform on the half-complex domain, we need to understand how to twiddle on the half-complex domain.
 
 ``` {.python #opencl-rtc}
+rtc_two_stage_template = """
+__kernel void fft{n}
+    ( __global const float *ri
+    , __global float *co )
+{{
+    notw{n1}(ri, ri+1, co, co+1, {n2s}, 2, 2, {n2}, 2, {n1s});
+    twiddle{n2}(co, twiddle_{n1}_{n2}, {n1s}, 0, {n1}, 2);
+}}
+"""
+```
+
+``` {.python #opencl-rtc}
 @noodles.schedule
-def single_stage_hc2hc(cfg, n, **args):
+def multi_stage_hc2hc(cfg, n1, n2, **args):
+    k1_p = indent_code(generate_codelet(
+        cfg, "r2cf", n=n1,
+        name="notw{}".format(n1),
+        opencl=True, **args))
     k = indent_code(generate_codelet(
-        cfg, "hc2hc", n=n, name="hc2hc_{}".format(n), opencl=True, **args))
+        cfg, "hc2hc", n=n2, name="twiddle{}".format(n2), opencl=True,
+        **args))
     return noodles.schedule("\n\n".join)(noodles.gather(
-        macros_to_code(macros), k))
+        macros_to_code(macros),
+        indent_code(twiddle_const(n1, n2)),
+        k1_p, k))
 ```
 
 ``` {.python #test-rtc-one}
@@ -354,6 +373,35 @@ def single_stage_hc2hc(cfg, n, **args):
 
 code = run(single_stage_rtc(cfg, 16))
 prg = cl.Program(ctx, code).build()
+```
+
+## Integer transforms
+
+The goal is to create an integer transform of real size 1024 to half-complex.
+
+A radix-4 transform, we can write without floating-point factors.
+
+``` {.python #opencl-macros}
+int_macros = copy(macros)
+int_macros.update({
+    "R": "int16",
+    "E": "int32" })
+```
+
+``` {.python #opencl-rtc}
+@noodles.schedule
+def multi_stage_int(cfg, n1, n2, **args):
+    k1_p = indent_code(generate_codelet(
+        cfg, "r2cf", n=n1,
+        name="notw{}".format(n1),
+        opencl=True, **args))
+    k = indent_code(generate_codelet(
+        cfg, "hc2hc", n=n2, name="twiddle{}".format(n2), opencl=True,
+        **args))
+    return noodles.schedule("\n\n".join)(noodles.gather(
+        macros_to_code(int_macros),
+        indent_code(twiddle_const(n1, n2)),
+        k1_p, k))
 ```
 
 ## Test
