@@ -85,12 +85,17 @@ class Array:
         if product(s) != product(self.shape):
             raise ValueError(
                 "Cannot reshape shape {} to {}, sizes don't match.".format(self.shape, s))
-        if self.ndim > 1:
+        if not self.contiguous:
             raise ValueError(
                 "Cannot reshape, since strides would become non-trivial.")
-        newstride = calc_stride(s, self.stride[0])
+        newstride = calc_stride(s, min(self.stride))
         return Array(self.name, self.dtype, shape=s, offset=self.offset, stride=newstride)
 
+    @property
+    def contiguous(self):
+        x = calc_stride(self.shape)
+        return self.stride == x or self.stride == x[::-1]
+            
     def _select(self, d, i):
         return Array(
             self.name, self.dtype,
