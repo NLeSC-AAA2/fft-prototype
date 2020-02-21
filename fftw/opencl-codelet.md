@@ -318,6 +318,45 @@ def test_ocl_two_stage_3_4():
     assert np.abs(y - np.fft.fft(np.arange(12))).max() < 1e-5
 ```
 
+# Integer transforms
+
+The goal is to create an integer transform of real size 1024 to half-complex.
+
+A radix-4 transform, we can write without floating-point factors.
+
+``` {.python #opencl-macros}
+int_macros = copy(macros)
+int_macros.update({
+    "R": "int16",
+    "E": "int32" })
+```
+
+``` {.python #opencl-rtc}
+@noodles.schedule
+def multi_stage_int(cfg, n1, n2, **args):
+    k1_p = indent_code(generate_codelet(
+        cfg, "notw", n=n1,
+        name="notw{}".format(n1),
+        opencl=True, **args))
+    k = indent_code(generate_codelet(
+        cfg, "twiddle", n=n2, name="twiddle{}".format(n2), opencl=True,
+        **args))
+    return noodles.schedule("\n\n".join)(noodles.gather(
+        macros_to_code(int_macros),
+        indent_code(twiddle_const_int(n1, n2)),
+        k1_p, k))
+```
+
+``` {.python #opencl-twiddle-const}
+def twiddle_const_int(n1, n2):
+    template = "__constant int16 twiddle_{n1}_{n2}[{n}] = {{\n{values}\n}};"
+    twiddles = make_twiddle(n1, n2)[:,1:].copy().view('float32')
+    twiddles_int = (twiddles * (2**10)).astype('int16')
+    return template.format(
+        n1=n1, n2=n2, n=2*n1*(n2-1),
+        values=", ".join(map(str, twiddles_int.flatten())))
+```
+
 # Real-to-complex FFT
 
 The real-to-complex FFT takes real input of size `N` and returns complex output of size `N//2`. We first need to test the `gen_r2cf` and `gen_r2cb` codelet generators (`f` and `b` standing for forward and backward).
@@ -373,35 +412,6 @@ def multi_stage_hc2hc(cfg, n1, n2, **args):
 
 code = run(single_stage_rtc(cfg, 16))
 prg = cl.Program(ctx, code).build()
-```
-
-## Integer transforms
-
-The goal is to create an integer transform of real size 1024 to half-complex.
-
-A radix-4 transform, we can write without floating-point factors.
-
-``` {.python #opencl-macros}
-int_macros = copy(macros)
-int_macros.update({
-    "R": "int16",
-    "E": "int32" })
-```
-
-``` {.python #opencl-rtc}
-@noodles.schedule
-def multi_stage_int(cfg, n1, n2, **args):
-    k1_p = indent_code(generate_codelet(
-        cfg, "r2cf", n=n1,
-        name="notw{}".format(n1),
-        opencl=True, **args))
-    k = indent_code(generate_codelet(
-        cfg, "hc2hc", n=n2, name="twiddle{}".format(n2), opencl=True,
-        **args))
-    return noodles.schedule("\n\n".join)(noodles.gather(
-        macros_to_code(int_macros),
-        indent_code(twiddle_const(n1, n2)),
-        k1_p, k))
 ```
 
 ## Test

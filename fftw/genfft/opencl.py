@@ -42,6 +42,15 @@ def twiddle_const(n1, n2):
         n1=n1, n2=n2, n=2*n1*(n2-1),
         values=", ".join(map(str, twiddles.view('float32').flatten())))
 ## ------ end
+## ------ begin <<opencl-twiddle-const>>[1]
+def twiddle_const_int(n1, n2):
+    template = "__constant int16 twiddle_{n1}_{n2}[{n}] = {{\n{values}\n}};"
+    twiddles = make_twiddle(n1, n2)[:,1:].copy().view('float32')
+    twiddles_int = (twiddles * (2**10)).astype('int16')
+    return template.format(
+        n1=n1, n2=n2, n=2*n1*(n2-1),
+        values=", ".join(map(str, twiddles_int.flatten())))
+## ------ end
 ## ------ begin <<opencl-two-stage>>[0]
 ## ------ begin <<opencl-two-stage-template>>[0]
 two_stage_template = """
@@ -73,6 +82,21 @@ def two_stage_kernel(cfg, n1, n2):
 
 ## ------ begin <<opencl-rtc>>[0]
 @noodles.schedule
+def multi_stage_int(cfg, n1, n2, **args):
+    k1_p = indent_code(generate_codelet(
+        cfg, "notw", n=n1,
+        name="notw{}".format(n1),
+        opencl=True, **args))
+    k = indent_code(generate_codelet(
+        cfg, "twiddle", n=n2, name="twiddle{}".format(n2), opencl=True,
+        **args))
+    return noodles.schedule("\n\n".join)(noodles.gather(
+        macros_to_code(int_macros),
+        indent_code(twiddle_const_int(n1, n2)),
+        k1_p, k))
+## ------ end
+## ------ begin <<opencl-rtc>>[1]
+@noodles.schedule
 def single_stage_r2c(cfg, n1, direction='f', **args):
     k1_p = indent_code(generate_codelet(
         cfg, "r2c" + direction, n=n1,
@@ -82,7 +106,7 @@ def single_stage_r2c(cfg, n1, direction='f', **args):
         macros_to_code(macros),
         k1_p))
 ## ------ end
-## ------ begin <<opencl-rtc>>[1]
+## ------ begin <<opencl-rtc>>[2]
 rtc_two_stage_template = """
 __kernel void fft{n}
     ( __global const float *ri
@@ -93,7 +117,7 @@ __kernel void fft{n}
 }}
 """
 ## ------ end
-## ------ begin <<opencl-rtc>>[2]
+## ------ begin <<opencl-rtc>>[3]
 @noodles.schedule
 def multi_stage_hc2hc(cfg, n1, n2, **args):
     k1_p = indent_code(generate_codelet(
@@ -105,21 +129,6 @@ def multi_stage_hc2hc(cfg, n1, n2, **args):
         **args))
     return noodles.schedule("\n\n".join)(noodles.gather(
         macros_to_code(macros),
-        indent_code(twiddle_const(n1, n2)),
-        k1_p, k))
-## ------ end
-## ------ begin <<opencl-rtc>>[3]
-@noodles.schedule
-def multi_stage_int(cfg, n1, n2, **args):
-    k1_p = indent_code(generate_codelet(
-        cfg, "r2cf", n=n1,
-        name="notw{}".format(n1),
-        opencl=True, **args))
-    k = indent_code(generate_codelet(
-        cfg, "hc2hc", n=n2, name="twiddle{}".format(n2), opencl=True,
-        **args))
-    return noodles.schedule("\n\n".join)(noodles.gather(
-        macros_to_code(int_macros),
         indent_code(twiddle_const(n1, n2)),
         k1_p, k))
 ## ------ end
