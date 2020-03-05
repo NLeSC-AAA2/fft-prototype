@@ -1,0 +1,6 @@
+pyopencl
+pytest
+pyparsing
+jupyterlab
+numpy
+
