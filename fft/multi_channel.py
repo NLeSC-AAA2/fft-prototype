@@ -12,6 +12,19 @@ def channels(N, radix):
     return groupby(sorted(range(N), key=parity_r), parity_r)
 
 
+def comp_idx(radix, i, j, k):
+    base = (i & ~(radix**k - 1))
+    rem  = (i &  (radix**k - 1))
+    return rem + j * radix**k + base * radix
+
+
+def comp_perm(radix, i):
+    base = (i & ~(radix - 1))
+    rem = (i & (radix - 1))
+    p = parity(radix, base)
+    return base | ((rem - p) % radix)
+
+
 @dataclass
 class MultiChannel:
     N: int

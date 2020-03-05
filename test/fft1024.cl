@@ -1032,6 +1032,7 @@ __constant float2 W[1028][3] = {
     {(float2) ( 0.018407f, -0.999831f), (float2) (-0.999322f, -0.036807f), (float2) (-0.055195f,  0.998476f)},
     {(float2) ( 0.012272f, -0.999925f), (float2) (-0.999699f, -0.024541f), (float2) (-0.036807f,  0.999322f)}};
 
+
 void fft_4(
     float2 * restrict s0, float2 * restrict s1,
     float2 * restrict s2, float2 * restrict s3,
@@ -1053,11 +1054,21 @@ void fft_4(
     c = ws0 - ws2;
     d = ws1 - ws3;
     s0[i0] = a + b;
-    s1[i1] = (float2) (c.x - d.y, c.y - d.x);
+    s1[i1] = (float2) (c.x + d.y, c.y - d.x);
     s2[i2] = a - b;
-    s3[i3] = (float2) (c.x + d.y, c.y + d.x);
+    s3[i3] = (float2) (c.x - d.y, c.y + d.x);
 }
 
+#ifdef TESTING
+__kernel void test_fft_4(__global const float2 *x, __global float2 *y)
+{
+    int i = get_global_id(0);
+    float2 s[4][1];
+    for (int k = 0; k < 4; ++k) s[k][0] = x[i*4+k];
+    fft_4(s[0], s[1], s[2], s[3], 0, 0, 0, 0, 0);
+    for (int k = 0; k < 4; ++k) y[i*4+k] = s[k][0];
+}
+#endif
 
 inline int parity_4(int i) {
     int x = i & 3;
@@ -1085,17 +1096,23 @@ inline int comp_idx_4(int i, int k) {
 }
 
 #ifdef TESTING
-__kernel void test_comp_idx_4(int k, __global const int *x, __global int *y) {
+__kernel void test_comp_idx_4(int k, int j, __global const int *x, __global int *y) {
     int i = get_global_id(0);
-    y[i] = comp_idx_4(i, k);
+    y[i] = comp_idx_4(i, k-1) + j * (1 << 2*(k-1));
 }
 #endif
 
 inline int comp_perm_4(int i, int r) {
     int p = parity_4(i);
-    return (i << 2) | ((r - p + 4) % 4);
+    return (i << 2) | ((r + 4 - p) & 3);
 }
 
+#ifdef TESTING
+__kernel void test_comp_perm_4(int r, __global const int *x, __global int *y) {
+    int i = get_global_id(0);
+    y[i] = comp_perm_4(x[i], r);
+}
+#endif
 
 inline int transpose_4(int j) {
     int x = 0;
@@ -1107,6 +1124,12 @@ inline int transpose_4(int j) {
     return x;
 }
 
+#ifdef TESTING
+__kernel void test_transpose_4(__global const int *x, __global int *y) {
+    int i = get_global_id(0);
+    y[i] = transpose_4(x[i]);
+}
+#endif
 
 void fft_1024_mc(
     float2 * restrict s0, float2 * restrict s1,
@@ -1114,11 +1137,11 @@ void fft_1024_mc(
 {
     int wp = 0;
     for (int k = 0; k < 5; ++k) {
+        int j = (k == 0 ? 0 : 1 << 2 * (k-1));
         for (int i = 0; i < 64; ++i) {
-            int a, j = 0;
+            int a;
             if (k != 0) {
-                j = 1 << 2*k;
-                a = comp_idx_4(i, k - 1);
+                a = comp_idx_4(i, k-1);
                 wp += 4;
             }
             else        { a = comp_perm_4(i, 0); }
@@ -1140,7 +1163,7 @@ __kernel void fft_1024(__global const float2 * restrict x, __global float2 * res
     for (int j = 0; j < 1024; ++j) {
         int i = transpose_4(j);
         int p = parity_4(i);
-        s[p][i>>2] = x[i];
+        s[p][i>>2] = x[j];
     }
 
     fft_1024_mc(s[0], s[1], s[2], s[3]);
@@ -1150,5 +1173,15 @@ __kernel void fft_1024(__global const float2 * restrict x, __global float2 * res
         y[i] = s[p][i>>2];
     }
 }
+
+#ifdef TESTING
+__kernel void test_mc_mix(__global const float2 *x, __global float2 *y)
+{
+    int j = get_global_id(0);
+    int i = transpose_4(j);
+    int p = parity_4(i);
+    y[(p << 8) | (i >> 2)] = x[j];
+}
+#endif
 
 // vim:ft=opencl
