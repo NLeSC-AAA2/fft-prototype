@@ -90,12 +90,14 @@ def test_fft4_4(cl_context, program):
     y = np.zeros_like(x)
     x_g = cl.Buffer(cl_context, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=x)
     y_g = cl.Buffer(cl_context, mf.WRITE_ONLY, x.nbytes)
-    program.test_fft_4(queue, (N,), None, x_g, y_g)
-    cl.enqueue_copy(queue, y, y_g)
 
-    y_Z = y[...,0]+1j*y[...,1]
-    y_ref = np.fft.fft(x[...,0]+1j*x[...,1])
-    assert abs(y_Z - y_ref).max() < 1e-4
+    for cycle in range(4):
+        y_ref = np.fft.fft(np.roll(x[...,0]+1j*x[...,1], -cycle, axis=1))
+        program.test_fft_4(queue, (N,), None, cl.cltypes.int(cycle), x_g, y_g)
+        cl.enqueue_copy(queue, y, y_g)
+        y_Z = np.roll(y[...,0]+1j*y[...,1], -cycle, axis=1)
+
+        assert abs(y_Z - y_ref).max() < 1e-4
 
 
 def test_fft_1024(cl_context, program):
